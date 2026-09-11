@@ -143,6 +143,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/merges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan a three-way structural merge
+         * @description Submit base, left, and right source texts for three-way structural
+         *     merge planning. Returns a deterministic merge plan with per-node
+         *     decisions and conflict classification. The operation is synchronous
+         *     because the planner is pure computation with no I/O.
+         */
+        post: operations["createMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/diffs/{id}/stream": {
         parameters: {
             query?: never;
@@ -288,6 +311,35 @@ export interface components {
              * @enum {string}
              */
             status: "added" | "deleted" | "modified" | "renamed";
+        };
+        CreateMergeRequest: {
+            base: components["schemas"]["DiffInput"];
+            left: components["schemas"]["DiffInput"];
+            right: components["schemas"]["DiffInput"];
+            /** @description Language hint. If omitted, detected from filename extensions. */
+            language?: string;
+        };
+        MergeResponse: {
+            language: string;
+            plan: components["schemas"]["MergePlan"];
+            base_source?: string;
+            left_source?: string;
+            right_source?: string;
+        };
+        MergePlan: {
+            entries: components["schemas"]["MergeEntry"][];
+            conflict_count: number;
+            has_conflicts: boolean;
+        };
+        MergeEntry: {
+            base_node?: components["schemas"]["NodeRef"];
+            left_node?: components["schemas"]["NodeRef"];
+            right_node?: components["schemas"]["NodeRef"];
+            /** @enum {string} */
+            decision: "unchanged" | "take-left" | "take-right" | "take-either" | "delete" | "conflict";
+            /** @enum {string} */
+            conflict_kind?: "modify-modify" | "delete-modify" | "rename-rename" | "add-add";
+            reason: string;
         };
         ErrorResponse: {
             error: string;
@@ -518,6 +570,48 @@ export interface operations {
             };
             /** @description Invalid input or git error. */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Merge plan computed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeResponse"];
+                };
+            };
+            /** @description Invalid input. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request body too large (max 1 MB). */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

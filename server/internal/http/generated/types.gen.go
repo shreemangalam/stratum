@@ -87,30 +87,84 @@ func (e HealthResponseStatus) Valid() bool {
 	}
 }
 
+// Defines values for MergeEntryConflictKind.
+const (
+	AddAdd       MergeEntryConflictKind = "add-add"
+	DeleteModify MergeEntryConflictKind = "delete-modify"
+	ModifyModify MergeEntryConflictKind = "modify-modify"
+	RenameRename MergeEntryConflictKind = "rename-rename"
+)
+
+// Valid indicates whether the value is a known member of the MergeEntryConflictKind enum.
+func (e MergeEntryConflictKind) Valid() bool {
+	switch e {
+	case AddAdd:
+		return true
+	case DeleteModify:
+		return true
+	case ModifyModify:
+		return true
+	case RenameRename:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for MergeEntryDecision.
+const (
+	MergeEntryDecisionConflict   MergeEntryDecision = "conflict"
+	MergeEntryDecisionDelete     MergeEntryDecision = "delete"
+	MergeEntryDecisionTakeEither MergeEntryDecision = "take-either"
+	MergeEntryDecisionTakeLeft   MergeEntryDecision = "take-left"
+	MergeEntryDecisionTakeRight  MergeEntryDecision = "take-right"
+	MergeEntryDecisionUnchanged  MergeEntryDecision = "unchanged"
+)
+
+// Valid indicates whether the value is a known member of the MergeEntryDecision enum.
+func (e MergeEntryDecision) Valid() bool {
+	switch e {
+	case MergeEntryDecisionConflict:
+		return true
+	case MergeEntryDecisionDelete:
+		return true
+	case MergeEntryDecisionTakeEither:
+		return true
+	case MergeEntryDecisionTakeLeft:
+		return true
+	case MergeEntryDecisionTakeRight:
+		return true
+	case MergeEntryDecisionUnchanged:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OperationKind.
 const (
-	Align  OperationKind = "align"
-	Delete OperationKind = "delete"
-	Insert OperationKind = "insert"
-	Move   OperationKind = "move"
-	Rename OperationKind = "rename"
-	Update OperationKind = "update"
+	OperationKindAlign  OperationKind = "align"
+	OperationKindDelete OperationKind = "delete"
+	OperationKindInsert OperationKind = "insert"
+	OperationKindMove   OperationKind = "move"
+	OperationKindRename OperationKind = "rename"
+	OperationKindUpdate OperationKind = "update"
 )
 
 // Valid indicates whether the value is a known member of the OperationKind enum.
 func (e OperationKind) Valid() bool {
 	switch e {
-	case Align:
+	case OperationKindAlign:
 		return true
-	case Delete:
+	case OperationKindDelete:
 		return true
-	case Insert:
+	case OperationKindInsert:
 		return true
-	case Move:
+	case OperationKindMove:
 		return true
-	case Rename:
+	case OperationKindRename:
 		return true
-	case Update:
+	case OperationKindUpdate:
 		return true
 	default:
 		return false
@@ -159,6 +213,16 @@ type ChangedFileStatus string
 // CreateDiffRequest defines model for CreateDiffRequest.
 type CreateDiffRequest struct {
 	// Language Language hint. If omitted, detected from filename extensions. Falls back to "go" when neither language nor filenames are provided.
+	Language *string   `json:"language,omitempty"`
+	Left     DiffInput `json:"left"`
+	Right    DiffInput `json:"right"`
+}
+
+// CreateMergeRequest defines model for CreateMergeRequest.
+type CreateMergeRequest struct {
+	Base DiffInput `json:"base"`
+
+	// Language Language hint. If omitted, detected from filename extensions.
 	Language *string   `json:"language,omitempty"`
 	Left     DiffInput `json:"left"`
 	Right    DiffInput `json:"right"`
@@ -286,6 +350,38 @@ type Location struct {
 	Offset int `json:"offset"`
 }
 
+// MergeEntry defines model for MergeEntry.
+type MergeEntry struct {
+	BaseNode     *NodeRef                `json:"base_node,omitempty"`
+	ConflictKind *MergeEntryConflictKind `json:"conflict_kind,omitempty"`
+	Decision     MergeEntryDecision      `json:"decision"`
+	LeftNode     *NodeRef                `json:"left_node,omitempty"`
+	Reason       string                  `json:"reason"`
+	RightNode    *NodeRef                `json:"right_node,omitempty"`
+}
+
+// MergeEntryConflictKind defines model for MergeEntry.ConflictKind.
+type MergeEntryConflictKind string
+
+// MergeEntryDecision defines model for MergeEntry.Decision.
+type MergeEntryDecision string
+
+// MergePlan defines model for MergePlan.
+type MergePlan struct {
+	ConflictCount int          `json:"conflict_count"`
+	Entries       []MergeEntry `json:"entries"`
+	HasConflicts  bool         `json:"has_conflicts"`
+}
+
+// MergeResponse defines model for MergeResponse.
+type MergeResponse struct {
+	BaseSource  *string   `json:"base_source,omitempty"`
+	Language    string    `json:"language"`
+	LeftSource  *string   `json:"left_source,omitempty"`
+	Plan        MergePlan `json:"plan"`
+	RightSource *string   `json:"right_source,omitempty"`
+}
+
 // NodeRef defines model for NodeRef.
 type NodeRef struct {
 	Id       int      `json:"id"`
@@ -337,3 +433,6 @@ type CreateGitDiffJSONRequestBody = GitDiffRequest
 
 // ListGitFilesJSONRequestBody defines body for ListGitFiles for application/json ContentType.
 type ListGitFilesJSONRequestBody = GitFilesRequest
+
+// CreateMergeJSONRequestBody defines body for CreateMerge for application/json ContentType.
+type CreateMergeJSONRequestBody = CreateMergeRequest

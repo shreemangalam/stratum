@@ -127,6 +127,11 @@ a {
 	transition: border-color 0.1s;
 }
 
+.btn:focus {
+	outline: none;
+	border-color: var(--foreground-faint);
+}
+
 .btn:disabled {
 	opacity: 0.5;
 	cursor: default;
@@ -386,6 +391,10 @@ a {
 		border-color 0.15s;
 }
 
+.tab-btn:focus {
+	outline: none;
+}
+
 .tab-btn:hover {
 	color: var(--foreground);
 }
@@ -425,6 +434,11 @@ a {
 	color: var(--foreground);
 	font-family: var(--font-mono);
 	font-size: 0.8125rem;
+}
+
+.git-input:focus {
+	outline: none;
+	border-color: var(--foreground-faint);
 }
 
 .git-input::placeholder {
@@ -1145,6 +1159,161 @@ a {
 	50% {
 		opacity: 1;
 	}
+}
+
+/* Merge form */
+
+.merge-inputs {
+	display: grid;
+	grid-template-columns: 1fr 1fr 1fr;
+	gap: 12px;
+	margin-bottom: 16px;
+}
+
+.merge-inputs .code-editor-wrapper {
+	min-height: 200px;
+}
+
+.merge-inputs .code-input {
+	min-height: 200px;
+}
+
+.merge-lang-select {
+	height: 32px;
+	padding: 0 8px;
+	border: 1px solid var(--border);
+	border-radius: 4px;
+	background: transparent;
+	color: var(--foreground);
+	font-family: var(--font-sans);
+	font-size: 0.8125rem;
+}
+
+.merge-lang-select:focus {
+	outline: none;
+	border-color: var(--foreground-faint);
+}
+
+/* Merge result */
+
+.merge-result {
+	margin-top: 24px;
+	border-top: 1px solid var(--border);
+	padding-top: 16px;
+}
+
+.merge-summary {
+	display: flex;
+	gap: 16px;
+	margin-bottom: 16px;
+	font-size: 0.875rem;
+}
+
+.merge-summary-item {
+	color: var(--foreground-muted);
+}
+
+.merge-summary-item strong {
+	color: var(--foreground);
+	font-weight: 600;
+}
+
+.merge-summary-conflicts strong {
+	color: var(--diff-remove);
+}
+
+.merge-summary-auto strong {
+	color: var(--diff-add);
+}
+
+.merge-table {
+	width: 100%;
+	border-collapse: collapse;
+	font-size: 0.8125rem;
+}
+
+.merge-table th {
+	text-align: left;
+	padding: 6px 12px;
+	font-size: 0.75rem;
+	text-transform: uppercase;
+	letter-spacing: 0.04em;
+	color: var(--foreground-muted);
+	border-bottom: 1px solid var(--border);
+}
+
+.merge-table td {
+	padding: 6px 12px;
+	border-bottom: 1px solid var(--border);
+	vertical-align: top;
+}
+
+.merge-cell-label {
+	font-family: var(--font-mono);
+	font-weight: 500;
+}
+
+.merge-cell-kind {
+	color: var(--foreground-muted);
+	font-family: var(--font-mono);
+	font-size: 0.75rem;
+}
+
+.merge-cell-reason {
+	color: var(--foreground-muted);
+	max-width: 360px;
+}
+
+.merge-badge {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 2px;
+	font-size: 0.75rem;
+	font-weight: 500;
+	letter-spacing: 0.02em;
+}
+
+.merge-badge.merge-unchanged {
+	background: var(--surface-raised);
+	color: var(--foreground-muted);
+}
+
+.merge-badge.merge-take-left {
+	background: var(--diff-add-bg);
+	color: var(--diff-add);
+}
+
+.merge-badge.merge-take-right {
+	background: var(--diff-change-bg);
+	color: var(--diff-change);
+}
+
+.merge-badge.merge-take-either {
+	background: var(--diff-add-bg);
+	color: var(--diff-add);
+}
+
+.merge-badge.merge-delete {
+	background: var(--diff-remove-bg);
+	color: var(--diff-remove);
+}
+
+.merge-badge.merge-conflict {
+	background: var(--diff-remove-bg);
+	color: var(--diff-remove);
+	font-weight: 600;
+}
+
+.merge-conflict-kind {
+	display: inline-block;
+	margin-left: 6px;
+	font-size: 0.6875rem;
+	color: var(--foreground-faint);
+	font-family: var(--font-mono);
+}
+
+tr.merge-conflict {
+	background: var(--diff-remove-bg);
 }
 
 /* Syntax highlighting tokens */

@@ -63,6 +63,7 @@ func NewServer(
 	srv.mux.HandleFunc("GET /api/v1/health", srv.handleHealth)
 	srv.mux.HandleFunc("GET /api/v1/languages", srv.handleLanguages)
 	srv.mux.HandleFunc("POST /api/v1/diffs", srv.handleCreateDiff)
+	srv.mux.HandleFunc("POST /api/v1/merges", srv.handleCreateMerge)
 	if config.GitEnabled {
 		srv.mux.HandleFunc("POST /api/v1/diffs/git", srv.handleGitDiff)
 		srv.mux.HandleFunc("POST /api/v1/git/files", srv.handleGitFiles)

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/shreemangalam/stratum/server/internal/cache"
+	"github.com/shreemangalam/stratum/server/internal/core"
 	"github.com/shreemangalam/stratum/server/internal/http/generated"
 	"github.com/shreemangalam/stratum/server/internal/store"
 )
@@ -287,6 +288,133 @@ func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
 		CacheSize:   s.cache.Size(),
 		Subscribers: s.subscribers.Count(),
 	})
+}
+
+type (
+	createMergeRequest = generated.CreateMergeRequest
+	mergeResponse      = generated.MergeResponse
+	mergeEntryGen      = generated.MergeEntry
+	mergePlanGen       = generated.MergePlan
+)
+
+func (s *Server) handleCreateMerge(w http.ResponseWriter, r *http.Request) {
+	var req createMergeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err.Error() == "http: request body too large" {
+			writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "request body too large"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON"})
+		return
+	}
+
+	if req.Base.Content == "" || req.Left.Content == "" || req.Right.Content == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "base, left, and right content are required"})
+		return
+	}
+
+	lang := optionalString(req.Language)
+	if lang == "" {
+		lang = detectLanguage(optionalString(req.Base.Filename), optionalString(req.Left.Filename), s)
+	}
+	if lang == "" {
+		lang = detectLanguage(optionalString(req.Right.Filename), "", s)
+	}
+	if lang == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "could not detect language from filename - please select a language",
+		})
+		return
+	}
+
+	parser, err := s.registry.ForLanguage(lang)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("unsupported language: %s", lang),
+		})
+		return
+	}
+
+	baseTree, err := parser.Parse(r.Context(), []byte(req.Base.Content))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("failed to parse base: %v", err),
+		})
+		return
+	}
+	leftTree, err := parser.Parse(r.Context(), []byte(req.Left.Content))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("failed to parse left: %v", err),
+		})
+		return
+	}
+	rightTree, err := parser.Parse(r.Context(), []byte(req.Right.Content))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("failed to parse right: %v", err),
+		})
+		return
+	}
+
+	plan, err := core.PlanThreeWayMerge(baseTree, leftTree, rightTree, core.DefaultMatchConfig())
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("merge planning failed: %v", err),
+		})
+		return
+	}
+
+	entries := make([]mergeEntryGen, len(plan.Entries))
+	for i, e := range plan.Entries {
+		entries[i] = mergeEntryGen{
+			BaseNode:  toNodeRefPtr(e.BaseNode),
+			LeftNode:  toNodeRefPtr(e.LeftNode),
+			RightNode: toNodeRefPtr(e.RightNode),
+			Decision:  generated.MergeEntryDecision(e.Decision),
+			Reason:    e.Reason,
+		}
+		if e.ConflictKind != nil {
+			kind := generated.MergeEntryConflictKind(*e.ConflictKind)
+			entries[i].ConflictKind = &kind
+		}
+	}
+
+	resp := mergeResponse{
+		Language: lang,
+		Plan: mergePlanGen{
+			Entries:       entries,
+			ConflictCount: plan.ConflictCount,
+			HasConflicts:  plan.HasConflicts,
+		},
+		BaseSource:  &req.Base.Content,
+		LeftSource:  &req.Left.Content,
+		RightSource: &req.Right.Content,
+	}
+
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func toNodeRefPtr(ref *core.NodeRef) *generated.NodeRef {
+	if ref == nil {
+		return nil
+	}
+	return &generated.NodeRef{
+		Id:   int(ref.ID),
+		Path: ref.Path,
+		Kind: ref.Kind,
+		Label: func() *string {
+			if ref.Label == "" {
+				return nil
+			}
+			return &ref.Label
+		}(),
+		Location: generated.Location{
+			Line:   ref.Location.Line,
+			Column: ref.Location.Column,
+			Offset: ref.Location.Offset,
+		},
+	}
 }
 
 type gitDiffRequest = generated.GitDiffRequest

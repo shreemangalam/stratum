@@ -99,6 +99,25 @@ export async function getGitFiles(
 	return data.files ?? [];
 }
 
+export type CreateMergeRequest = components["schemas"]["CreateMergeRequest"];
+export type MergeResponse = components["schemas"]["MergeResponse"];
+export type MergePlan = components["schemas"]["MergePlan"];
+export type MergeEntry = components["schemas"]["MergeEntry"];
+export type MergeDecision = MergeEntry["decision"];
+
+export async function createMerge(req: CreateMergeRequest): Promise<MergeResponse> {
+	const res = await safeFetch(`${API_BASE}/api/v1/merges`, {
+		method: "POST",
+		headers: { "Content-Type": "application/json" },
+		body: JSON.stringify(req),
+	});
+	if (!res.ok) {
+		if (res.status === 413) throw new Error("Request too large - maximum 1 MB per request");
+		throw new Error(await parseErrorBody(res, "Failed to create merge plan"));
+	}
+	return res.json();
+}
+
 export function streamDiff(id: string, onEvent: (type: string, data: string) => void): () => void {
 	let cancelled = false;
 
