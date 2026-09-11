@@ -1,0 +1,51 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    environment:
+      POSTGRES_DB: stratum
+      POSTGRES_USER: stratum
+      POSTGRES_PASSWORD: stratum
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stratum"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./server
+    ports:
+      - "${API_PORT:-8080}:8080"
+    environment:
+      PORT: "8080"
+      DATABASE_URL: "postgres://stratum:stratum@postgres:5432/stratum?sslmode=disable"
+      ALLOWED_ORIGINS: "${ALLOWED_ORIGINS:-http://localhost:3000}"
+      GIT_ENABLED: "${GIT_ENABLED:-true}"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    profiles:
+      - full
+
+  web:
+    build:
+      context: ./web
+      args:
+        NEXT_PUBLIC_API_URL: "http://localhost:${API_PORT:-8080}"
+        NEXT_PUBLIC_GIT_ENABLED: "${GIT_ENABLED:-true}"
+    ports:
+      - "${WEB_PORT:-3000}:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: "http://localhost:${API_PORT:-8080}"
+      NEXT_PUBLIC_GIT_ENABLED: "${GIT_ENABLED:-true}"
+    depends_on:
+      - api
+    profiles:
+      - full
+
+volumes:
+  pgdata:

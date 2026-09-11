@@ -1,0 +1,98 @@
+{
+  "operations": [
+    {
+      "kind": "move",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "greet",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 14
+        }
+      },
+      "right_node": {
+        "id": 13,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "greet",
+        "location": {
+          "line": 7,
+          "column": 0,
+          "offset": 56
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 8,
+        "path": "source_file \u003e function_declaration \u003e block \u003e return_statement \u003e literal",
+        "kind": "literal",
+        "label": "",
+        "location": {
+          "line": 4,
+          "column": 8,
+          "offset": 44
+        }
+      },
+      "right_node": {
+        "id": 18,
+        "path": "source_file \u003e function_declaration \u003e block \u003e return_statement \u003e literal",
+        "kind": "literal",
+        "label": "",
+        "location": {
+          "line": 8,
+          "column": 8,
+          "offset": 86
+        }
+      }
+    },
+    {
+      "kind": "insert",
+      "right_node": {
+        "id": 19,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "multiply",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 94
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1,
+  "semantic": [
+    {
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "greet",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 14
+        }
+      },
+      "right_node": {
+        "id": 13,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "greet",
+        "location": {
+          "line": 7,
+          "column": 0,
+          "offset": 56
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    }
+  ]
+}

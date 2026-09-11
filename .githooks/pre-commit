@@ -1,0 +1,18 @@
+#!/bin/sh
+
+# Prevent any file under docs/private/ from being committed.
+# This hook is installed by `make setup` and enforced by CI.
+
+PRIVATE_FILES=$(git diff --cached --name-only --diff-filter=ACMR | grep '^docs/private/' || true)
+
+if [ -n "$PRIVATE_FILES" ]; then
+    echo ""
+    echo "ERROR: Attempted to commit files under docs/private/:"
+    echo ""
+    echo "$PRIVATE_FILES"
+    echo ""
+    echo "These files must never be committed to the public repo."
+    echo "Run: git reset HEAD docs/private/"
+    echo ""
+    exit 1
+fi

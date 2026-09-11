@@ -1,0 +1,32 @@
+# Private notes — never commit
+docs/private/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+web/.next/
+web/out/
+web/dist/
+
+# Playwright
+web/test-results/
+web/playwright-report/
+web/blob-report/
+
+# Go
+server/bin/
+*.test
+*.out
+coverage.out
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.idea/
+*.swp

@@ -1,0 +1,199 @@
+{
+  "operations": [
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 2,
+        "path": "source_file \u003e interface_declaration",
+        "kind": "interface_declaration",
+        "label": "User",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      },
+      "right_node": {
+        "id": 2,
+        "path": "source_file \u003e interface_declaration",
+        "kind": "interface_declaration",
+        "label": "User",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "kind": "rename",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "getUser",
+        "location": {
+          "line": 7,
+          "column": 0,
+          "offset": 73
+        }
+      },
+      "right_node": {
+        "id": 4,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatUser",
+        "location": {
+          "line": 12,
+          "column": 0,
+          "offset": 215
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "getUser",
+        "location": {
+          "line": 7,
+          "column": 0,
+          "offset": 73
+        }
+      },
+      "right_node": {
+        "id": 4,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatUser",
+        "location": {
+          "line": 12,
+          "column": 0,
+          "offset": 215
+        }
+      }
+    },
+    {
+      "kind": "rename",
+      "left_node": {
+        "id": 4,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatUser",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 173
+        }
+      },
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "deleteUser",
+        "location": {
+          "line": 16,
+          "column": 0,
+          "offset": 318
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 4,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatUser",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 173
+        }
+      },
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "deleteUser",
+        "location": {
+          "line": 16,
+          "column": 0,
+          "offset": 318
+        }
+      }
+    },
+    {
+      "kind": "insert",
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "getUser",
+        "location": {
+          "line": 8,
+          "column": 0,
+          "offset": 101
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1,
+  "semantic": [
+    {
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "getUser",
+        "location": {
+          "line": 7,
+          "column": 0,
+          "offset": 73
+        }
+      },
+      "right_node": {
+        "id": 4,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatUser",
+        "location": {
+          "line": 12,
+          "column": 0,
+          "offset": 215
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    },
+    {
+      "left_node": {
+        "id": 4,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatUser",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 173
+        }
+      },
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "deleteUser",
+        "location": {
+          "line": 16,
+          "column": 0,
+          "offset": 318
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    }
+  ]
+}

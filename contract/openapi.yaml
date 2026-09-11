@@ -1,0 +1,550 @@
+openapi: 3.1.0
+info:
+  title: Stratum API
+  description: Structural diff and merge tool API.
+  version: 0.1.0
+  license:
+    name: MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+paths:
+  /api/v1/health:
+    get:
+      operationId: getHealth
+      summary: Health check
+      responses:
+        "200":
+          description: Server is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/v1/languages:
+    get:
+      operationId: listLanguages
+      summary: List supported languages
+      responses:
+        "200":
+          description: List of supported language identifiers.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LanguagesResponse"
+
+  /api/v1/diffs:
+    post:
+      operationId: createDiff
+      summary: Submit a diff request
+      description: |
+        Submit two source texts for structural diff. If a diff for the same
+        content pair already exists (completed or in progress), returns the
+        existing job instead of creating a new one.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateDiffRequest"
+      responses:
+        "201":
+          description: Diff job created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiffJob"
+        "200":
+          description: Existing diff job returned (idempotent).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiffJob"
+        "400":
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body too large (max 1 MB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/diffs/{id}:
+    get:
+      operationId: getDiff
+      summary: Get diff result
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Diff job with result if completed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiffJob"
+        "404":
+          description: Diff not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/stats:
+    get:
+      operationId: getStats
+      summary: Server statistics
+      description: Returns job counts, cache size, and active subscriber count.
+      responses:
+        "200":
+          description: Server statistics.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StatsResponse"
+        "500":
+          description: Internal error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/diffs/git:
+    post:
+      operationId: createGitDiff
+      summary: Submit a git diff request
+      description: |
+        Extract file contents from a local git repository at two refs and
+        run a structural diff. The server executes `git show <ref>:<file>`
+        to obtain each version, then feeds them through the normal diff
+        pipeline. Language is auto-detected from the file extension if not
+        provided.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GitDiffRequest"
+      responses:
+        "201":
+          description: Diff job created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiffJob"
+        "200":
+          description: Existing diff job returned (idempotent).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiffJob"
+        "400":
+          description: Invalid input (missing fields, invalid ref, git error).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/git/files:
+    post:
+      operationId: listGitFiles
+      summary: List changed files between two git refs
+      description: |
+        Executes `git diff --name-status <left_ref> <right_ref>` in the
+        given repository directory. Returns a list of changed files with
+        their git status (added, deleted, modified, renamed).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GitFilesRequest"
+      responses:
+        "200":
+          description: List of changed files.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GitFilesResponse"
+        "400":
+          description: Invalid input or git error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/diffs/{id}/stream:
+    get:
+      operationId: streamDiff
+      summary: Stream diff job progress via SSE
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: SSE event stream.
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "404":
+          description: Diff not found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - database
+      properties:
+        status:
+          type: string
+          enum:
+            - ok
+            - degraded
+        database:
+          type: string
+          enum:
+            - connected
+            - unreachable
+
+    LanguagesResponse:
+      type: object
+      required:
+        - languages
+      properties:
+        languages:
+          type: array
+          items:
+            $ref: "#/components/schemas/LanguageInfo"
+
+    LanguageInfo:
+      type: object
+      required:
+        - id
+        - extensions
+      properties:
+        id:
+          type: string
+        extensions:
+          type: array
+          items:
+            type: string
+
+    CreateDiffRequest:
+      type: object
+      required:
+        - left
+        - right
+      properties:
+        left:
+          $ref: "#/components/schemas/DiffInput"
+        right:
+          $ref: "#/components/schemas/DiffInput"
+        language:
+          type: string
+          description: >
+            Language hint. If omitted, detected from filename extensions.
+            Falls back to "go" when neither language nor filenames are provided.
+
+    DiffInput:
+      type: object
+      required:
+        - content
+      properties:
+        content:
+          type: string
+          description: Source text.
+        filename:
+          type: string
+          description: Optional filename for language detection.
+
+    DiffJob:
+      type: object
+      required:
+        - id
+        - status
+        - created_at
+      properties:
+        id:
+          type: string
+        status:
+          type: string
+          enum:
+            - pending
+            - running
+            - completed
+            - failed
+        language:
+          type: string
+          description: Language used for parsing.
+        result:
+          $ref: "#/components/schemas/EditScript"
+        error:
+          type: string
+          description: Error message if status is failed.
+        left_source:
+          type: string
+          description: Original source text (present on permalink retrieval).
+        right_source:
+          type: string
+          description: Modified source text (present on permalink retrieval).
+        created_at:
+          type: string
+        updated_at:
+          type: string
+
+    EditScript:
+      type: object
+      required:
+        - operations
+        - left_root
+        - right_root
+      properties:
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Operation"
+        left_root:
+          type: integer
+        right_root:
+          type: integer
+        approximate:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApproximateRegion"
+        semantic:
+          type: array
+          description: >
+            Conservative function-level classification of the changes.
+            Verdicts use edit-script shape and, for direct Go statement
+            reorderings, bounded def/use analysis. They are evidence for
+            review rather than proof of behavioral equivalence.
+          items:
+            $ref: "#/components/schemas/SemanticChange"
+
+    SemanticChange:
+      type: object
+      required:
+        - left_node
+        - right_node
+        - verdict
+        - reason
+      properties:
+        left_node:
+          $ref: "#/components/schemas/NodeRef"
+        right_node:
+          $ref: "#/components/schemas/NodeRef"
+        verdict:
+          type: string
+          enum:
+            - behavior-preserving
+            - behavior-changing
+            - indeterminate
+        reason:
+          type: string
+
+    Operation:
+      type: object
+      required:
+        - kind
+      properties:
+        kind:
+          type: string
+          enum:
+            - insert
+            - delete
+            - move
+            - rename
+            - update
+            - align
+        left_node:
+          $ref: "#/components/schemas/NodeRef"
+        right_node:
+          $ref: "#/components/schemas/NodeRef"
+
+    NodeRef:
+      type: object
+      required:
+        - id
+        - path
+        - kind
+        - location
+      properties:
+        id:
+          type: integer
+        path:
+          type: string
+        kind:
+          type: string
+        label:
+          type: string
+        location:
+          $ref: "#/components/schemas/Location"
+
+    Location:
+      type: object
+      required:
+        - line
+        - column
+        - offset
+      properties:
+        line:
+          type: integer
+        column:
+          type: integer
+        offset:
+          type: integer
+
+    ApproximateRegion:
+      type: object
+      required:
+        - left_span
+        - right_span
+      properties:
+        left_span:
+          $ref: "#/components/schemas/Span"
+        right_span:
+          $ref: "#/components/schemas/Span"
+
+    Span:
+      type: object
+      required:
+        - start
+        - end
+      properties:
+        start:
+          $ref: "#/components/schemas/Location"
+        end:
+          $ref: "#/components/schemas/Location"
+
+    StatsResponse:
+      type: object
+      required:
+        - jobs
+        - cache_size
+        - active_subscribers
+      properties:
+        jobs:
+          $ref: "#/components/schemas/JobStats"
+        cache_size:
+          type: integer
+        active_subscribers:
+          type: integer
+
+    JobStats:
+      type: object
+      required:
+        - pending
+        - running
+        - completed
+        - failed
+      properties:
+        pending:
+          type: integer
+        running:
+          type: integer
+        completed:
+          type: integer
+        failed:
+          type: integer
+
+    GitDiffRequest:
+      type: object
+      required:
+        - repo_path
+        - file_path
+        - left_ref
+        - right_ref
+      properties:
+        repo_path:
+          type: string
+          description: Absolute path to a local git repository.
+        file_path:
+          type: string
+          description: >
+            Relative path to the file within the repository
+            (no leading slash, no ".." traversal).
+        left_ref:
+          type: string
+          description: >
+            Base git ref (branch, tag, commit hash, or relative ref
+            like HEAD~1).
+        right_ref:
+          type: string
+          description: Target git ref.
+        language:
+          type: string
+          description: >
+            Language hint. If omitted, detected from file extension.
+            Falls back to line-based comparison for unrecognized extensions.
+
+    GitFilesRequest:
+      type: object
+      required:
+        - repo_path
+        - left_ref
+        - right_ref
+      properties:
+        repo_path:
+          type: string
+          description: Absolute path to a local git repository.
+        left_ref:
+          type: string
+          description: Base git ref.
+        right_ref:
+          type: string
+          description: Target git ref.
+
+    GitFilesResponse:
+      type: object
+      required:
+        - files
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/ChangedFile"
+
+    ChangedFile:
+      type: object
+      required:
+        - path
+        - status
+      properties:
+        path:
+          type: string
+          description: File path relative to repository root.
+        status:
+          type: string
+          enum:
+            - added
+            - deleted
+            - modified
+            - renamed
+          description: Git change status.
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string

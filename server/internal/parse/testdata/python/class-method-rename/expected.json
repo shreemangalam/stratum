@@ -1,0 +1,56 @@
+{
+  "operations": [
+    {
+      "kind": "rename",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "get_user",
+        "location": {
+          "line": 2,
+          "column": 4,
+          "offset": 19
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "fetch_user",
+        "location": {
+          "line": 2,
+          "column": 4,
+          "offset": 19
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "get_user",
+        "location": {
+          "line": 2,
+          "column": 4,
+          "offset": 19
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "fetch_user",
+        "location": {
+          "line": 2,
+          "column": 4,
+          "offset": 19
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1
+}

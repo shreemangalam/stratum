@@ -1,0 +1,225 @@
+{
+  "operations": [
+    {
+      "kind": "move",
+      "left_node": {
+        "id": 23,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "FormatOutput",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 144
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "FormatOutput",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 14
+        }
+      }
+    },
+    {
+      "kind": "rename",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "ProcessData",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 14
+        }
+      },
+      "right_node": {
+        "id": 14,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "TransformData",
+        "location": {
+          "line": 7,
+          "column": 0,
+          "offset": 82
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 11,
+        "path": "source_file \u003e function_declaration \u003e block \u003e return_statement \u003e binary_expression \u003e literal",
+        "kind": "literal",
+        "label": "",
+        "location": {
+          "line": 4,
+          "column": 16,
+          "offset": 70
+        }
+      },
+      "right_node": {
+        "id": 22,
+        "path": "source_file \u003e function_declaration \u003e block \u003e return_statement \u003e binary_expression \u003e literal",
+        "kind": "literal",
+        "label": "",
+        "location": {
+          "line": 8,
+          "column": 16,
+          "offset": 140
+        }
+      }
+    },
+    {
+      "kind": "rename",
+      "left_node": {
+        "id": 12,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "ValidateInput",
+        "location": {
+          "line": 7,
+          "column": 0,
+          "offset": 86
+        }
+      },
+      "right_node": {
+        "id": 23,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "CheckInput",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 158
+        }
+      }
+    },
+    {
+      "kind": "move",
+      "left_node": {
+        "id": 18,
+        "path": "source_file \u003e function_declaration \u003e block \u003e return_statement \u003e binary_expression",
+        "kind": "binary_expression",
+        "label": "\u003e",
+        "location": {
+          "line": 8,
+          "column": 8,
+          "offset": 130
+        }
+      },
+      "right_node": {
+        "id": 30,
+        "path": "source_file \u003e function_declaration \u003e block \u003e return_statement \u003e binary_expression \u003e binary_expression",
+        "kind": "binary_expression",
+        "label": "\u003e",
+        "location": {
+          "line": 12,
+          "column": 8,
+          "offset": 199
+        }
+      }
+    },
+    {
+      "kind": "insert",
+      "right_node": {
+        "id": 29,
+        "path": "source_file \u003e function_declaration \u003e block \u003e return_statement \u003e binary_expression",
+        "kind": "binary_expression",
+        "label": "\u0026\u0026",
+        "location": {
+          "line": 12,
+          "column": 8,
+          "offset": 199
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1,
+  "semantic": [
+    {
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "ProcessData",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 14
+        }
+      },
+      "right_node": {
+        "id": 14,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "TransformData",
+        "location": {
+          "line": 7,
+          "column": 0,
+          "offset": 82
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    },
+    {
+      "left_node": {
+        "id": 12,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "ValidateInput",
+        "location": {
+          "line": 7,
+          "column": 0,
+          "offset": 86
+        }
+      },
+      "right_node": {
+        "id": 23,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "CheckInput",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 158
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    },
+    {
+      "left_node": {
+        "id": 23,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "FormatOutput",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 144
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "FormatOutput",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 14
+        }
+      },
+      "verdict": "behavior-preserving",
+      "reason": "relocated only"
+    }
+  ]
+}

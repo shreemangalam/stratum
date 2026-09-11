@@ -1,0 +1,31 @@
+{
+  "operations": [
+    {
+      "kind": "move",
+      "left_node": {
+        "id": 5,
+        "path": "source_file \u003e class_declaration \u003e method_definition",
+        "kind": "method_definition",
+        "label": "multiply",
+        "location": {
+          "line": 10,
+          "column": 2,
+          "offset": 100
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e class_declaration \u003e method_definition",
+        "kind": "method_definition",
+        "label": "multiply",
+        "location": {
+          "line": 2,
+          "column": 2,
+          "offset": 21
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1
+}

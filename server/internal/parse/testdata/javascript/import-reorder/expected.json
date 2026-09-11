@@ -1,0 +1,235 @@
+{
+  "operations": [
+    {
+      "kind": "move",
+      "left_node": {
+        "id": 6,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "buildUrl",
+        "location": {
+          "line": 10,
+          "column": 0,
+          "offset": 194
+        }
+      },
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "buildUrl",
+        "location": {
+          "line": 5,
+          "column": 0,
+          "offset": 101
+        }
+      }
+    },
+    {
+      "kind": "rename",
+      "left_node": {
+        "id": 2,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "fs",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      },
+      "right_node": {
+        "id": 2,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "url",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 2,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "fs",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      },
+      "right_node": {
+        "id": 2,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "url",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "path",
+        "location": {
+          "line": 2,
+          "column": 0,
+          "offset": 31
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "path",
+        "location": {
+          "line": 2,
+          "column": 0,
+          "offset": 29
+        }
+      }
+    },
+    {
+      "kind": "rename",
+      "left_node": {
+        "id": 4,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "url",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 60
+        }
+      },
+      "right_node": {
+        "id": 4,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "fs",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 58
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 4,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "url",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 60
+        }
+      },
+      "right_node": {
+        "id": 4,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "fs",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 58
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 5,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "processFile",
+        "location": {
+          "line": 5,
+          "column": 0,
+          "offset": 90
+        }
+      },
+      "right_node": {
+        "id": 6,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "processFile",
+        "location": {
+          "line": 9,
+          "column": 0,
+          "offset": 180
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1,
+  "semantic": [
+    {
+      "left_node": {
+        "id": 5,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "processFile",
+        "location": {
+          "line": 5,
+          "column": 0,
+          "offset": 90
+        }
+      },
+      "right_node": {
+        "id": 6,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "processFile",
+        "location": {
+          "line": 9,
+          "column": 0,
+          "offset": 180
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    },
+    {
+      "left_node": {
+        "id": 6,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "buildUrl",
+        "location": {
+          "line": 10,
+          "column": 0,
+          "offset": 194
+        }
+      },
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "buildUrl",
+        "location": {
+          "line": 5,
+          "column": 0,
+          "offset": 101
+        }
+      },
+      "verdict": "behavior-preserving",
+      "reason": "relocated only"
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "operations": [
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e typedef_declaration",
+        "kind": "typedef_declaration",
+        "label": "Point",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 20
+        }
+      },
+      "right_node": {
+        "id": 4,
+        "path": "source_file \u003e typedef_declaration",
+        "kind": "typedef_declaration",
+        "label": "Point",
+        "location": {
+          "line": 4,
+          "column": 0,
+          "offset": 40
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 4,
+        "path": "source_file \u003e function_definition",
+        "kind": "function_definition",
+        "label": "print_point",
+        "location": {
+          "line": 8,
+          "column": 0,
+          "offset": 69
+        }
+      },
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e function_definition",
+        "kind": "function_definition",
+        "label": "print_point",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 120
+        }
+      }
+    },
+    {
+      "kind": "insert",
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e include_directive",
+        "kind": "include_directive",
+        "label": "\u003cstring.h\u003e",
+        "location": {
+          "line": 2,
+          "column": 0,
+          "offset": 19
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1,
+  "semantic": [
+    {
+      "left_node": {
+        "id": 4,
+        "path": "source_file \u003e function_definition",
+        "kind": "function_definition",
+        "label": "print_point",
+        "location": {
+          "line": 8,
+          "column": 0,
+          "offset": 69
+        }
+      },
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e function_definition",
+        "kind": "function_definition",
+        "label": "print_point",
+        "location": {
+          "line": 11,
+          "column": 0,
+          "offset": 120
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    }
+  ]
+}

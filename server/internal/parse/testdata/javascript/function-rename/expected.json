@@ -1,0 +1,135 @@
+{
+  "operations": [
+    {
+      "kind": "rename",
+      "left_node": {
+        "id": 2,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "processData",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      },
+      "right_node": {
+        "id": 2,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "transformData",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 2,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "processData",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      },
+      "right_node": {
+        "id": 2,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "transformData",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatOutput",
+        "location": {
+          "line": 5,
+          "column": 0,
+          "offset": 65
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatOutput",
+        "location": {
+          "line": 5,
+          "column": 0,
+          "offset": 67
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1,
+  "semantic": [
+    {
+      "left_node": {
+        "id": 2,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "processData",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      },
+      "right_node": {
+        "id": 2,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "transformData",
+        "location": {
+          "line": 1,
+          "column": 0,
+          "offset": 0
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    },
+    {
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatOutput",
+        "location": {
+          "line": 5,
+          "column": 0,
+          "offset": 65
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "formatOutput",
+        "location": {
+          "line": 5,
+          "column": 0,
+          "offset": 67
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    }
+  ]
+}

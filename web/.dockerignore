@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+dist/
+e2e/
+test-results/
+playwright-report/
+blob-report/
+playwright.config.ts

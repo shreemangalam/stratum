@@ -1,0 +1,31 @@
+{
+  "operations": [
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e variable_declaration",
+        "kind": "variable_declaration",
+        "label": "Calculator",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 21
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e variable_declaration",
+        "kind": "variable_declaration",
+        "label": "Calculator",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 21
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1
+}

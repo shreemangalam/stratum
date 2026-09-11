@@ -1,0 +1,95 @@
+{
+  "operations": [
+    {
+      "kind": "move",
+      "left_node": {
+        "id": 4,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "method_b",
+        "location": {
+          "line": 6,
+          "column": 8,
+          "offset": 80
+        }
+      },
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "method_b",
+        "location": {
+          "line": 3,
+          "column": 8,
+          "offset": 30
+        }
+      }
+    },
+    {
+      "kind": "rename",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "method_a",
+        "location": {
+          "line": 3,
+          "column": 8,
+          "offset": 30
+        }
+      },
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "method_c",
+        "location": {
+          "line": 9,
+          "column": 8,
+          "offset": 131
+        }
+      }
+    },
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 3,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "method_a",
+        "location": {
+          "line": 3,
+          "column": 8,
+          "offset": 30
+        }
+      },
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "method_c",
+        "location": {
+          "line": 9,
+          "column": 8,
+          "offset": 131
+        }
+      }
+    },
+    {
+      "kind": "insert",
+      "right_node": {
+        "id": 4,
+        "path": "source_file \u003e class_definition \u003e method_definition",
+        "kind": "method_definition",
+        "label": "method_a",
+        "location": {
+          "line": 6,
+          "column": 8,
+          "offset": 80
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1
+}

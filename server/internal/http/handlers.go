@@ -1,0 +1,479 @@
+package http
+
+import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/shreemangalam/stratum/server/internal/cache"
+	"github.com/shreemangalam/stratum/server/internal/http/generated"
+	"github.com/shreemangalam/stratum/server/internal/store"
+)
+
+type createDiffRequest = generated.CreateDiffRequest
+type errorResponse = generated.ErrorResponse
+type languageInfo = generated.LanguageInfo
+type languagesResponse = generated.LanguagesResponse
+
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	resp := map[string]string{"status": "ok"}
+	if err := s.store.Ping(ctx); err != nil {
+		resp["status"] = "degraded"
+		resp["database"] = "unreachable"
+		writeJSON(w, http.StatusServiceUnavailable, resp)
+		return
+	}
+	resp["database"] = "connected"
+	writeJSON(w, http.StatusOK, resp)
+}
+
+func (s *Server) handleLanguages(w http.ResponseWriter, _ *http.Request) {
+	langs := s.registry.Languages()
+	infos := make([]languageInfo, 0, len(langs))
+	for _, lang := range langs {
+		p, err := s.registry.ForLanguage(lang)
+		if err != nil {
+			continue
+		}
+		infos = append(infos, languageInfo{
+			Id:         p.Language(),
+			Extensions: p.Extensions(),
+		})
+	}
+	writeJSON(w, http.StatusOK, languagesResponse{Languages: infos})
+}
+
+func (s *Server) handleCreateDiff(w http.ResponseWriter, r *http.Request) {
+	var req createDiffRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		if err.Error() == "http: request body too large" {
+			writeJSON(w, http.StatusRequestEntityTooLarge, errorResponse{Error: "request body too large"})
+			return
+		}
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON"})
+		return
+	}
+
+	if req.Left.Content == "" || req.Right.Content == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "both left and right content are required"})
+		return
+	}
+
+	lang := optionalString(req.Language)
+	if lang == "" {
+		lang = detectLanguage(optionalString(req.Left.Filename), optionalString(req.Right.Filename), s)
+	}
+	if lang == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "could not detect language from filename - please select a language",
+		})
+		return
+	}
+
+	if _, err := s.registry.ForLanguage(lang); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("unsupported language: %s", lang),
+		})
+		return
+	}
+
+	leftBytes := []byte(req.Left.Content)
+	rightBytes := []byte(req.Right.Content)
+	leftHash := cache.ContentHash(leftBytes)
+	rightHash := cache.ContentHash(rightBytes)
+
+	existing, err := s.store.FindJobByHashes(r.Context(), leftHash, rightHash, lang)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal error"})
+		return
+	}
+	if existing != nil {
+		writeJSON(w, http.StatusOK, existing)
+		return
+	}
+
+	s.sources.Put(leftHash, leftBytes)
+	s.sources.Put(rightHash, rightBytes)
+
+	job, err := s.store.CreateJob(r.Context(), leftHash, rightHash, lang, req.Left.Content, req.Right.Content)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "failed to create job"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, job)
+}
+
+func (s *Server) handleGetDiff(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "missing diff id"})
+		return
+	}
+
+	if !isValidUUID(id) {
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "diff not found"})
+		return
+	}
+
+	job, err := s.store.GetJob(r.Context(), id)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal error"})
+		return
+	}
+	if job == nil {
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "diff not found"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, job)
+}
+
+func (s *Server) handleStreamDiff(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" || !isValidUUID(id) {
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "diff not found"})
+		return
+	}
+
+	job, err := s.store.GetJob(r.Context(), id)
+	if err != nil || job == nil {
+		writeJSON(w, http.StatusNotFound, errorResponse{Error: "diff not found"})
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "streaming not supported"})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	if job.Status == store.StatusCompleted || job.Status == store.StatusFailed {
+		fmt.Fprintf(w, "event: status\ndata: %s\n\n", job.Status)
+		if job.Status == store.StatusCompleted && job.Result != nil {
+			fmt.Fprintf(w, "event: result\ndata: %s\n\n", string(job.Result))
+		}
+		if job.Status == store.StatusFailed && job.Error != "" {
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", job.Error)
+		}
+		flusher.Flush()
+		return
+	}
+
+	ch := s.subscribers.Subscribe(id)
+	defer s.subscribers.Unsubscribe(id, ch)
+
+	job, err = s.store.GetJob(r.Context(), id)
+	if err != nil || job == nil {
+		return
+	}
+	if job.Status == store.StatusCompleted || job.Status == store.StatusFailed {
+		fmt.Fprintf(w, "event: status\ndata: %s\n\n", job.Status)
+		if job.Status == store.StatusCompleted && job.Result != nil {
+			fmt.Fprintf(w, "event: result\ndata: %s\n\n", string(job.Result))
+		}
+		if job.Status == store.StatusFailed && job.Error != "" {
+			fmt.Fprintf(w, "event: error\ndata: %s\n\n", job.Error)
+		}
+		flusher.Flush()
+		return
+	}
+
+	fmt.Fprintf(w, "event: status\ndata: %s\n\n", job.Status)
+	flusher.Flush()
+
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case event, ok := <-ch:
+			if !ok {
+				return
+			}
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, event.Data)
+			flusher.Flush()
+
+			if event.Type == "result" || (event.Type == "status" && (event.Data == "completed" || event.Data == "failed")) {
+				return
+			}
+		}
+	}
+}
+
+func writeJSON(w http.ResponseWriter, status int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(v)
+}
+
+func generateID() string {
+	b := make([]byte, 8)
+	rand.Read(b)
+	return hex.EncodeToString(b)
+}
+
+func isValidUUID(s string) bool {
+	if len(s) != 36 {
+		return false
+	}
+	for i, c := range s {
+		if i == 8 || i == 13 || i == 18 || i == 23 {
+			if c != '-' {
+				return false
+			}
+		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
+}
+
+type statsResponse struct {
+	Jobs        *store.JobStats `json:"jobs"`
+	CacheSize   int             `json:"cache_size"`
+	Subscribers int             `json:"active_subscribers"`
+}
+
+func (s *Server) handleStats(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	defer cancel()
+
+	stats, err := s.store.JobStats(ctx)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "failed to retrieve stats"})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, statsResponse{
+		Jobs:        stats,
+		CacheSize:   s.cache.Size(),
+		Subscribers: s.subscribers.Count(),
+	})
+}
+
+type gitDiffRequest = generated.GitDiffRequest
+
+func (s *Server) handleGitDiff(w http.ResponseWriter, r *http.Request) {
+	var req gitDiffRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON"})
+		return
+	}
+
+	if req.RepoPath == "" || req.FilePath == "" || req.LeftRef == "" || req.RightRef == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "repo_path, file_path, left_ref, and right_ref are required",
+		})
+		return
+	}
+
+	if err := validateRepoPath(req.RepoPath); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if !isCleanRef(req.LeftRef) || !isCleanRef(req.RightRef) || !isCleanPath(req.FilePath) {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid ref or file path"})
+		return
+	}
+
+	leftContent, err := gitShow(r.Context(), req.RepoPath, req.LeftRef, req.FilePath)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("failed to read %s at %s: %v", req.FilePath, req.LeftRef, err),
+		})
+		return
+	}
+
+	rightContent, err := gitShow(r.Context(), req.RepoPath, req.RightRef, req.FilePath)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("failed to read %s at %s: %v", req.FilePath, req.RightRef, err),
+		})
+		return
+	}
+
+	lang := optionalString(req.Language)
+	if lang == "" {
+		ext := strings.TrimPrefix(filepath.Ext(req.FilePath), ".")
+		if p, err := s.registry.ForExtension(ext); err == nil {
+			lang = p.Language()
+		}
+	}
+	if lang == "" {
+		lang = "c" // line-based fallback for unrecognized extensions
+	}
+
+	leftBytes := []byte(leftContent)
+	rightBytes := []byte(rightContent)
+	leftHash := cache.ContentHash(leftBytes)
+	rightHash := cache.ContentHash(rightBytes)
+
+	existing, err := s.store.FindJobByHashes(r.Context(), leftHash, rightHash, lang)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal error"})
+		return
+	}
+	if existing != nil {
+		writeJSON(w, http.StatusOK, existing)
+		return
+	}
+
+	s.sources.Put(leftHash, leftBytes)
+	s.sources.Put(rightHash, rightBytes)
+
+	job, err := s.store.CreateJob(r.Context(), leftHash, rightHash, lang, leftContent, rightContent)
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "failed to create job"})
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, job)
+}
+
+func gitShow(ctx context.Context, repoPath, ref, filePath string) (string, error) {
+	cmd := exec.CommandContext(ctx, "git", "-C", repoPath, "show", ref+":"+filePath)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return string(out), nil
+}
+
+func isCleanRef(ref string) bool {
+	for _, r := range ref {
+		if r == ';' || r == '|' || r == '&' || r == '$' || r == '`' || r == '\n' || r == '\r' {
+			return false
+		}
+	}
+	return len(ref) > 0 && len(ref) <= 256
+}
+
+func isCleanPath(p string) bool {
+	if strings.Contains(p, "..") || strings.HasPrefix(p, "/") || strings.HasPrefix(p, "\\") {
+		return false
+	}
+	for _, r := range p {
+		if r == ';' || r == '|' || r == '&' || r == '$' || r == '`' || r == '\n' || r == '\r' {
+			return false
+		}
+	}
+	return len(p) > 0 && len(p) <= 1024
+}
+
+func validateRepoPath(repoPath string) error {
+	if !filepath.IsAbs(repoPath) {
+		return fmt.Errorf("repo_path must be an absolute path")
+	}
+	cleaned := filepath.Clean(repoPath)
+	gitDir := filepath.Join(cleaned, ".git")
+	info, err := os.Stat(gitDir)
+	if err != nil || !info.IsDir() {
+		return fmt.Errorf("repo_path does not appear to be a git repository (no .git directory)")
+	}
+	return nil
+}
+
+type gitFilesRequest = generated.GitFilesRequest
+type changedFile = generated.ChangedFile
+
+func (s *Server) handleGitFiles(w http.ResponseWriter, r *http.Request) {
+	var req gitFilesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON"})
+		return
+	}
+
+	if req.RepoPath == "" || req.LeftRef == "" || req.RightRef == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "repo_path, left_ref, and right_ref are required",
+		})
+		return
+	}
+
+	if err := validateRepoPath(req.RepoPath); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if !isCleanRef(req.LeftRef) || !isCleanRef(req.RightRef) {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid ref"})
+		return
+	}
+
+	cmd := exec.CommandContext(r.Context(), "git", "-C", req.RepoPath,
+		"diff", "--name-status", req.LeftRef, req.RightRef)
+	out, err := cmd.Output()
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("git diff failed: %v", err),
+		})
+		return
+	}
+
+	var files []changedFile
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		status := "modified"
+		switch parts[0] {
+		case "A":
+			status = "added"
+		case "D":
+			status = "deleted"
+		case "M":
+			status = "modified"
+		default:
+			if strings.HasPrefix(parts[0], "R") {
+				status = "renamed"
+			}
+		}
+		files = append(files, changedFile{Path: parts[1], Status: generated.ChangedFileStatus(status)})
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{"files": files})
+}
+
+func detectLanguage(left, right string, s *Server) string {
+	for _, filename := range []string{left, right} {
+		if filename == "" {
+			continue
+		}
+		ext := strings.TrimPrefix(filepath.Ext(filename), ".")
+		if ext == "" {
+			continue
+		}
+		p, err := s.registry.ForExtension(ext)
+		if err == nil {
+			return p.Language()
+		}
+	}
+	return ""
+}
+
+func optionalString(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
+}

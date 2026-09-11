@@ -1,0 +1,87 @@
+{
+  "operations": [
+    {
+      "kind": "update",
+      "left_node": {
+        "id": 5,
+        "path": "source_file \u003e interface_declaration \u003e method_declaration",
+        "kind": "method_declaration",
+        "label": "findById",
+        "location": {
+          "line": 6,
+          "column": 4,
+          "offset": 80
+        }
+      },
+      "right_node": {
+        "id": 6,
+        "path": "source_file \u003e interface_declaration \u003e method_declaration",
+        "kind": "method_declaration",
+        "label": "findById",
+        "location": {
+          "line": 7,
+          "column": 4,
+          "offset": 107
+        }
+      }
+    },
+    {
+      "kind": "insert",
+      "right_node": {
+        "id": 4,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "java.util.Optional",
+        "location": {
+          "line": 4,
+          "column": 0,
+          "offset": 45
+        }
+      }
+    },
+    {
+      "kind": "insert",
+      "right_node": {
+        "id": 8,
+        "path": "source_file \u003e interface_declaration \u003e method_declaration",
+        "kind": "method_declaration",
+        "label": "deleteById",
+        "location": {
+          "line": 11,
+          "column": 4,
+          "offset": 179
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1,
+  "semantic": [
+    {
+      "left_node": {
+        "id": 5,
+        "path": "source_file \u003e interface_declaration \u003e method_declaration",
+        "kind": "method_declaration",
+        "label": "findById",
+        "location": {
+          "line": 6,
+          "column": 4,
+          "offset": 80
+        }
+      },
+      "right_node": {
+        "id": 6,
+        "path": "source_file \u003e interface_declaration \u003e method_declaration",
+        "kind": "method_declaration",
+        "label": "findById",
+        "location": {
+          "line": 7,
+          "column": 4,
+          "offset": 107
+        }
+      },
+      "verdict": "behavior-changing",
+      "reason": "body edited"
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "operations": [
+    {
+      "kind": "insert",
+      "right_node": {
+        "id": 3,
+        "path": "source_file \u003e import_declaration",
+        "kind": "import_declaration",
+        "label": "",
+        "location": {
+          "line": 3,
+          "column": 0,
+          "offset": 14
+        }
+      }
+    },
+    {
+      "kind": "insert",
+      "right_node": {
+        "id": 5,
+        "path": "source_file \u003e function_declaration",
+        "kind": "function_declaration",
+        "label": "greet",
+        "location": {
+          "line": 5,
+          "column": 0,
+          "offset": 28
+        }
+      }
+    }
+  ],
+  "left_root": 1,
+  "right_root": 1
+}

@@ -1,0 +1,205 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Go vet
+        working-directory: server
+        run: go vet ./...
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: TypeScript tsc
+        working-directory: web
+        run: npm run typecheck
+
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: server
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Biome check
+        working-directory: web
+        run: npx biome check .
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: stratum_test
+          POSTGRES_USER: stratum
+          POSTGRES_PASSWORD: stratum
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U stratum"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - name: Go tests
+        working-directory: server
+        env:
+          DATABASE_URL: postgres://stratum:stratum@localhost:5432/stratum_test?sslmode=disable
+        run: go test -race -count=1 ./...
+
+  gen-check:
+    name: Generated files check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install oapi-codegen
+        run: go install github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.8.0
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Regenerate
+        run: make gen
+
+      - name: Check for drift
+        run: |
+          if [ -n "$(git diff --name-only)" ]; then
+            echo "Generated files are stale. Run 'make gen' and commit."
+            git diff --name-only
+            exit 1
+          fi
+
+  docker-build:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -t stratum-api ./server
+
+      - name: Build web image
+        run: docker build -t stratum-web ./web
+
+  e2e:
+    name: Full-stack browser test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install web dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Install Playwright Chromium
+        working-directory: web
+        run: npx playwright install --with-deps chromium
+
+      - name: Start full stack
+        run: docker compose --profile full up -d --build --wait
+
+      - name: Run browser tests
+        working-directory: web
+        env:
+          STRATUM_E2E_EXTERNAL_SERVER: "1"
+          STRATUM_E2E_FULL_STACK: "1"
+        run: npm run test:e2e
+
+      - name: Show service logs on failure
+        if: failure()
+        run: docker compose --profile full logs
+
+      - name: Stop full stack
+        if: always()
+        run: docker compose --profile full down -v
+
+  secrets:
+    name: Secret scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: trufflesecurity/trufflehog@main
+        with:
+          extra_args: --only-verified
+
+  private-leak:
+    name: Private file leak check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for private files
+        run: |
+          if find . -path './docs/private/*' -type f | grep -q .; then
+            echo "ERROR: Files under docs/private/ found in the repository."
+            find . -path './docs/private/*' -type f
+            exit 1
+          fi
