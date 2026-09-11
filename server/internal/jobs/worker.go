@@ -159,11 +159,19 @@ func (p *Pool) processJob(ctx context.Context, job *store.Job) {
 	}
 
 	leftSrc, ok := p.sources.Get(job.LeftHash)
+	if !ok && job.LeftSource != "" {
+		leftSrc = []byte(job.LeftSource)
+		ok = true
+	}
 	if !ok {
 		p.failJob(ctx, job.ID, "left source not found")
 		return
 	}
 	rightSrc, ok := p.sources.Get(job.RightHash)
+	if !ok && job.RightSource != "" {
+		rightSrc = []byte(job.RightSource)
+		ok = true
+	}
 	if !ok {
 		p.failJob(ctx, job.ID, "right source not found")
 		return

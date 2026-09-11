@@ -5,22 +5,40 @@ package generated
 
 // Defines values for ChangedFileStatus.
 const (
-	Added    ChangedFileStatus = "added"
-	Deleted  ChangedFileStatus = "deleted"
-	Modified ChangedFileStatus = "modified"
-	Renamed  ChangedFileStatus = "renamed"
+	ChangedFileStatusAdded    ChangedFileStatus = "added"
+	ChangedFileStatusDeleted  ChangedFileStatus = "deleted"
+	ChangedFileStatusModified ChangedFileStatus = "modified"
+	ChangedFileStatusRenamed  ChangedFileStatus = "renamed"
 )
 
 // Valid indicates whether the value is a known member of the ChangedFileStatus enum.
 func (e ChangedFileStatus) Valid() bool {
 	switch e {
-	case Added:
+	case ChangedFileStatusAdded:
 		return true
-	case Deleted:
+	case ChangedFileStatusDeleted:
 		return true
-	case Modified:
+	case ChangedFileStatusModified:
 		return true
-	case Renamed:
+	case ChangedFileStatusRenamed:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for CrossFileMatchKind.
+const (
+	CrossFileMatchKindMove       CrossFileMatchKind = "move"
+	CrossFileMatchKindRenameMove CrossFileMatchKind = "rename-move"
+)
+
+// Valid indicates whether the value is a known member of the CrossFileMatchKind enum.
+func (e CrossFileMatchKind) Valid() bool {
+	switch e {
+	case CrossFileMatchKindMove:
+		return true
+	case CrossFileMatchKindRenameMove:
 		return true
 	default:
 		return false
@@ -45,6 +63,30 @@ func (e DiffJobStatus) Valid() bool {
 	case Pending:
 		return true
 	case Running:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for FileResultStatus.
+const (
+	FileResultStatusAdded    FileResultStatus = "added"
+	FileResultStatusDeleted  FileResultStatus = "deleted"
+	FileResultStatusModified FileResultStatus = "modified"
+	FileResultStatusRenamed  FileResultStatus = "renamed"
+)
+
+// Valid indicates whether the value is a known member of the FileResultStatus enum.
+func (e FileResultStatus) Valid() bool {
+	switch e {
+	case FileResultStatusAdded:
+		return true
+	case FileResultStatusDeleted:
+		return true
+	case FileResultStatusModified:
+		return true
+	case FileResultStatusRenamed:
 		return true
 	default:
 		return false
@@ -210,6 +252,24 @@ type ChangedFile struct {
 // ChangedFileStatus Git change status.
 type ChangedFileStatus string
 
+// ChangesetResponse defines model for ChangesetResponse.
+type ChangesetResponse struct {
+	CrossFileMatches []CrossFileMatch `json:"cross_file_matches"`
+	Files            []FileResult     `json:"files"`
+}
+
+// CreateChangesetRequest defines model for CreateChangesetRequest.
+type CreateChangesetRequest struct {
+	// LeftRef Base git ref.
+	LeftRef string `json:"left_ref"`
+
+	// RepoPath Absolute path to a local git repository.
+	RepoPath string `json:"repo_path"`
+
+	// RightRef Target git ref.
+	RightRef string `json:"right_ref"`
+}
+
 // CreateDiffRequest defines model for CreateDiffRequest.
 type CreateDiffRequest struct {
 	// Language Language hint. If omitted, detected from filename extensions. Falls back to "go" when neither language nor filenames are provided.
@@ -227,6 +287,26 @@ type CreateMergeRequest struct {
 	Left     DiffInput `json:"left"`
 	Right    DiffInput `json:"right"`
 }
+
+// CrossFileMatch defines model for CrossFileMatch.
+type CrossFileMatch struct {
+	// Kind Type of cross-file relationship. "move" means a structurally identical or similar node moved between files. "rename-move" means it was also renamed.
+	Kind CrossFileMatchKind `json:"kind"`
+
+	// Score Similarity score between 0 and 1.
+	Score float32 `json:"score"`
+
+	// SourceFile File the node was deleted from.
+	SourceFile string  `json:"source_file"`
+	SourceNode NodeRef `json:"source_node"`
+
+	// TargetFile File the node was inserted into.
+	TargetFile string  `json:"target_file"`
+	TargetNode NodeRef `json:"target_node"`
+}
+
+// CrossFileMatchKind Type of cross-file relationship. "move" means a structurally identical or similar node moved between files. "rename-move" means it was also renamed.
+type CrossFileMatchKind string
 
 // DiffInput defines model for DiffInput.
 type DiffInput struct {
@@ -276,6 +356,23 @@ type EditScript struct {
 type ErrorResponse struct {
 	Error string `json:"error"`
 }
+
+// FileResult defines model for FileResult.
+type FileResult struct {
+	EditScript *EditScript `json:"edit_script,omitempty"`
+
+	// Language Language used for parsing.
+	Language string `json:"language"`
+
+	// Path File path relative to repository root.
+	Path string `json:"path"`
+
+	// Status Git change status.
+	Status FileResultStatus `json:"status"`
+}
+
+// FileResultStatus Git change status.
+type FileResultStatus string
 
 // GitDiffRequest defines model for GitDiffRequest.
 type GitDiffRequest struct {
@@ -424,6 +521,9 @@ type StatsResponse struct {
 	CacheSize         int      `json:"cache_size"`
 	Jobs              JobStats `json:"jobs"`
 }
+
+// CreateChangesetJSONRequestBody defines body for CreateChangeset for application/json ContentType.
+type CreateChangesetJSONRequestBody = CreateChangesetRequest
 
 // CreateDiffJSONRequestBody defines body for CreateDiff for application/json ContentType.
 type CreateDiffJSONRequestBody = CreateDiffRequest

@@ -2,7 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type ChangedFile, createGitDiff, getGitFiles } from "@/lib/api/client";
+import {
+	type ChangedFile,
+	type ChangesetResponse,
+	type CrossFileMatch,
+	createChangeset,
+	createGitDiff,
+	getGitFiles,
+} from "@/lib/api/client";
 
 const STATUS_COLORS: Record<string, string> = {
 	added: "var(--diff-add)",
@@ -136,6 +143,50 @@ function countFiles(node: FolderNode): number {
 	return node.files.length + node.children.reduce((sum, c) => sum + countFiles(c), 0);
 }
 
+const MATCH_KIND_LABELS: Record<string, string> = {
+	move: "Moved",
+	"rename-move": "Renamed + moved",
+};
+
+function CrossFilePanel({ matches }: { matches: CrossFileMatch[] }) {
+	if (matches.length === 0) {
+		return (
+			<div className="crossfile-panel">
+				<div className="crossfile-header">Cross-file analysis</div>
+				<div className="crossfile-empty">No cross-file moves or renames detected.</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="crossfile-panel">
+			<div className="crossfile-header">
+				Cross-file analysis -- {matches.length} {matches.length === 1 ? "match" : "matches"}
+			</div>
+			<div className="crossfile-list">
+				{matches.map((m, i) => (
+					<div key={i} className="crossfile-item">
+						<span className={`crossfile-badge crossfile-${m.kind}`}>
+							{MATCH_KIND_LABELS[m.kind] ?? m.kind}
+						</span>
+						<div className="crossfile-detail">
+							<span className="crossfile-node">{m.source_node.label ?? m.source_node.kind}</span>
+							<span className="crossfile-arrow">-&gt;</span>
+							{m.kind === "rename-move" && (
+								<span className="crossfile-node">{m.target_node.label ?? m.target_node.kind}</span>
+							)}
+							<span className="crossfile-files">
+								{m.source_file} -&gt; {m.target_file}
+							</span>
+						</div>
+						<span className="crossfile-score">{Math.round(m.score * 100)}%</span>
+					</div>
+				))}
+			</div>
+		</div>
+	);
+}
+
 export function GitDiffForm() {
 	const router = useRouter();
 	const [repoPath, setRepoPath] = useState("");
@@ -147,6 +198,8 @@ export function GitDiffForm() {
 	const [submitting, setSubmitting] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [hasLoaded, setHasLoaded] = useState(false);
+	const [changeset, setChangeset] = useState<ChangesetResponse | null>(null);
+	const [analyzingChangeset, setAnalyzingChangeset] = useState(false);
 	const repoRef = useRef<HTMLInputElement>(null);
 
 	const fileTree = files.length > 0 ? flattenSingleChildDirs(buildFileTree(files)) : null;
@@ -207,6 +260,30 @@ export function GitDiffForm() {
 			setSubmitting(false);
 		}
 	}, [repoPath, selectedFile, leftRef, rightRef, router]);
+
+	const handleAnalyzeChangeset = useCallback(async () => {
+		if (!repoPath.trim() || !leftRef.trim() || !rightRef.trim()) {
+			setError("Repository path and both refs are required");
+			return;
+		}
+
+		setAnalyzingChangeset(true);
+		setError(null);
+		setChangeset(null);
+
+		try {
+			const result = await createChangeset({
+				repo_path: repoPath.trim(),
+				left_ref: leftRef.trim(),
+				right_ref: rightRef.trim(),
+			});
+			setChangeset(result);
+		} catch (e) {
+			setError(e instanceof Error ? e.message : "Failed to analyze changeset");
+		} finally {
+			setAnalyzingChangeset(false);
+		}
+	}, [repoPath, leftRef, rightRef]);
 
 	const handleKeyDown = useCallback(
 		(e: React.KeyboardEvent) => {
@@ -349,17 +426,29 @@ export function GitDiffForm() {
 								{selectedFile}
 							</span>
 						)}
-						<button
-							type="button"
-							className="btn btn-primary"
-							onClick={handleSubmit}
-							disabled={!selectedFile || submitting}
-						>
-							{submitting ? "Diffing..." : "Diff selected file"}
-						</button>
+						<div className="git-footer-actions">
+							<button
+								type="button"
+								className="btn btn-secondary"
+								onClick={handleAnalyzeChangeset}
+								disabled={analyzingChangeset}
+							>
+								{analyzingChangeset ? "Analyzing..." : "Analyze changeset"}
+							</button>
+							<button
+								type="button"
+								className="btn btn-primary"
+								onClick={handleSubmit}
+								disabled={!selectedFile || submitting}
+							>
+								{submitting ? "Diffing..." : "Diff selected file"}
+							</button>
+						</div>
 					</div>
 				</div>
 			)}
+
+			{changeset && <CrossFilePanel matches={changeset.cross_file_matches} />}
 		</div>
 	);
 }

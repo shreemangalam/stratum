@@ -166,6 +166,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/changesets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Analyze a git changeset with cross-file detection
+         * @description Diff all changed files between two git refs and detect cross-file
+         *     moves and renames. For each changed file the server extracts both
+         *     versions, parses them, and generates an edit script. A post-processing
+         *     pass then correlates deleted nodes in one file with inserted nodes in
+         *     another to surface cross-file relationships.
+         */
+        post: operations["createChangeset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/diffs/{id}/stream": {
         parameters: {
             query?: never;
@@ -340,6 +364,45 @@ export interface components {
             /** @enum {string} */
             conflict_kind?: "modify-modify" | "delete-modify" | "rename-rename" | "add-add";
             reason: string;
+        };
+        CreateChangesetRequest: {
+            /** @description Absolute path to a local git repository. */
+            repo_path: string;
+            /** @description Base git ref. */
+            left_ref: string;
+            /** @description Target git ref. */
+            right_ref: string;
+        };
+        ChangesetResponse: {
+            files: components["schemas"]["FileResult"][];
+            cross_file_matches: components["schemas"]["CrossFileMatch"][];
+        };
+        FileResult: {
+            /** @description File path relative to repository root. */
+            path: string;
+            /**
+             * @description Git change status.
+             * @enum {string}
+             */
+            status: "added" | "deleted" | "modified" | "renamed";
+            /** @description Language used for parsing. */
+            language: string;
+            edit_script?: components["schemas"]["EditScript"];
+        };
+        CrossFileMatch: {
+            /**
+             * @description Type of cross-file relationship. "move" means a structurally identical or similar node moved between files. "rename-move" means it was also renamed.
+             * @enum {string}
+             */
+            kind: "move" | "rename-move";
+            /** @description Similarity score between 0 and 1. */
+            score: number;
+            /** @description File the node was deleted from. */
+            source_file: string;
+            /** @description File the node was inserted into. */
+            target_file: string;
+            source_node: components["schemas"]["NodeRef"];
+            target_node: components["schemas"]["NodeRef"];
         };
         ErrorResponse: {
             error: string;
@@ -612,6 +675,39 @@ export interface operations {
             };
             /** @description Request body too large (max 1 MB). */
             413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createChangeset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateChangesetRequest"];
+            };
+        };
+        responses: {
+            /** @description Changeset analysis complete. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesetResponse"];
+                };
+            };
+            /** @description Invalid input or git error. */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };

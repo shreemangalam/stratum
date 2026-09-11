@@ -607,6 +607,287 @@ func (s *Server) handleGitFiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"files": files})
 }
 
+type (
+	createChangesetRequest = generated.CreateChangesetRequest
+	changesetResponse      = generated.ChangesetResponse
+	fileResult             = generated.FileResult
+	crossFileMatchGen      = generated.CrossFileMatch
+)
+
+func (s *Server) handleCreateChangeset(w http.ResponseWriter, r *http.Request) {
+	var req createChangesetRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid JSON"})
+		return
+	}
+
+	if req.RepoPath == "" || req.LeftRef == "" || req.RightRef == "" {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: "repo_path, left_ref, and right_ref are required",
+		})
+		return
+	}
+
+	if err := validateRepoPath(req.RepoPath); err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: err.Error()})
+		return
+	}
+
+	if !isCleanRef(req.LeftRef) || !isCleanRef(req.RightRef) {
+		writeJSON(w, http.StatusBadRequest, errorResponse{Error: "invalid ref"})
+		return
+	}
+
+	cmd := exec.CommandContext(r.Context(), "git", "-C", req.RepoPath,
+		"diff", "--name-status", req.LeftRef, req.RightRef)
+	out, err := cmd.Output()
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorResponse{
+			Error: fmt.Sprintf("git diff failed: %v", err),
+		})
+		return
+	}
+
+	type changedEntry struct {
+		path    string
+		oldPath string
+		status  string
+	}
+	var changed []changedEntry
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "\t", 3)
+		if len(parts) < 2 {
+			continue
+		}
+		status := "modified"
+		switch parts[0] {
+		case "A":
+			status = "added"
+		case "D":
+			status = "deleted"
+		case "M":
+			status = "modified"
+		default:
+			if strings.HasPrefix(parts[0], "R") {
+				status = "renamed"
+			}
+		}
+		entry := changedEntry{status: status}
+		if status == "renamed" && len(parts) == 3 {
+			entry.oldPath = parts[1]
+			entry.path = parts[2]
+		} else {
+			entry.path = parts[1]
+		}
+		changed = append(changed, entry)
+	}
+
+	var fileDiffs []core.FileDiff
+	var fileResults []fileResult
+	cfg := core.DefaultMatchConfig()
+
+	for _, ch := range changed {
+		fr := fileResult{
+			Path:   ch.path,
+			Status: generated.FileResultStatus(ch.status),
+		}
+
+		leftPath := ch.path
+		if ch.oldPath != "" {
+			leftPath = ch.oldPath
+		}
+
+		var leftContent, rightContent string
+		if ch.status != "added" {
+			leftContent, _ = gitShow(r.Context(), req.RepoPath, req.LeftRef, leftPath)
+		}
+		if ch.status != "deleted" {
+			rightContent, _ = gitShow(r.Context(), req.RepoPath, req.RightRef, ch.path)
+		}
+
+		ext := strings.TrimPrefix(filepath.Ext(ch.path), ".")
+		lang := ""
+		if p, err := s.registry.ForExtension(ext); err == nil {
+			lang = p.Language()
+		}
+		if lang == "" {
+			lang = "c"
+		}
+		fr.Language = lang
+
+		parser, err := s.registry.ForLanguage(lang)
+		if err != nil {
+			fileResults = append(fileResults, fr)
+			continue
+		}
+
+		var leftTree, rightTree *core.Tree
+		if leftContent != "" {
+			leftTree, _ = parser.Parse(r.Context(), []byte(leftContent))
+		}
+		if rightContent != "" {
+			rightTree, _ = parser.Parse(r.Context(), []byte(rightContent))
+		}
+
+		if leftTree != nil && rightTree != nil {
+			matching := core.Match(leftTree, rightTree, cfg)
+			es := core.GenerateEditScript(leftTree, rightTree, matching)
+
+			genES := coreEditScriptToGen(es)
+			fr.EditScript = &genES
+
+			fileDiffs = append(fileDiffs, core.FileDiff{
+				Path:        ch.path,
+				LeftSource:  []byte(leftContent),
+				RightSource: []byte(rightContent),
+				LeftTree:    leftTree,
+				RightTree:   rightTree,
+				Script:      es,
+			})
+		} else if leftTree != nil {
+			es := &core.EditScript{Operations: []core.Operation{}}
+			for _, child := range leftTree.Root.Children {
+				ref := core.NodeRef{
+					ID:    child.ID,
+					Path:  child.Kind,
+					Kind:  child.Kind,
+					Label: child.Label,
+					Location: core.Location{
+						Line:   child.Span.Start.Line,
+						Column: child.Span.Start.Column,
+						Offset: child.Span.Start.Offset,
+					},
+				}
+				es.Operations = append(es.Operations, core.Operation{
+					Kind:     core.OpDelete,
+					LeftNode: &ref,
+				})
+			}
+			genES := coreEditScriptToGen(es)
+			fr.EditScript = &genES
+
+			fileDiffs = append(fileDiffs, core.FileDiff{
+				Path:       ch.path,
+				LeftSource: []byte(leftContent),
+				LeftTree:   leftTree,
+				Script:     es,
+			})
+		} else if rightTree != nil {
+			es := &core.EditScript{Operations: []core.Operation{}}
+			for _, child := range rightTree.Root.Children {
+				ref := core.NodeRef{
+					ID:    child.ID,
+					Path:  child.Kind,
+					Kind:  child.Kind,
+					Label: child.Label,
+					Location: core.Location{
+						Line:   child.Span.Start.Line,
+						Column: child.Span.Start.Column,
+						Offset: child.Span.Start.Offset,
+					},
+				}
+				es.Operations = append(es.Operations, core.Operation{
+					Kind:      core.OpInsert,
+					RightNode: &ref,
+				})
+			}
+			genES := coreEditScriptToGen(es)
+			fr.EditScript = &genES
+
+			fileDiffs = append(fileDiffs, core.FileDiff{
+				Path:        ch.path,
+				RightSource: []byte(rightContent),
+				RightTree:   rightTree,
+				Script:      es,
+			})
+		}
+
+		fileResults = append(fileResults, fr)
+	}
+
+	crossFileResult := core.DetectCrossFileChanges(fileDiffs)
+	var cfMatches []crossFileMatchGen
+	for _, m := range crossFileResult.Matches {
+		cfMatches = append(cfMatches, crossFileMatchGen{
+			Kind:       generated.CrossFileMatchKind(m.Kind),
+			Score:      float32(m.Score),
+			SourceFile: m.SourceFile,
+			TargetFile: m.TargetFile,
+			SourceNode: *toNodeRefPtr(&m.SourceNode),
+			TargetNode: *toNodeRefPtr(&m.TargetNode),
+		})
+	}
+
+	if fileResults == nil {
+		fileResults = []fileResult{}
+	}
+	if cfMatches == nil {
+		cfMatches = []crossFileMatchGen{}
+	}
+
+	writeJSON(w, http.StatusOK, changesetResponse{
+		Files:            fileResults,
+		CrossFileMatches: cfMatches,
+	})
+}
+
+func coreEditScriptToGen(es *core.EditScript) generated.EditScript {
+	ops := make([]generated.Operation, len(es.Operations))
+	for i, op := range es.Operations {
+		ops[i] = generated.Operation{
+			Kind:      generated.OperationKind(op.Kind),
+			LeftNode:  toNodeRefPtr(op.LeftNode),
+			RightNode: toNodeRefPtr(op.RightNode),
+		}
+	}
+	genES := generated.EditScript{
+		Operations: ops,
+		LeftRoot:   int(es.LeftRoot),
+		RightRoot:  int(es.RightRoot),
+	}
+	if len(es.Approximate) > 0 {
+		approx := make([]generated.ApproximateRegion, len(es.Approximate))
+		for i, r := range es.Approximate {
+			approx[i] = generated.ApproximateRegion{
+				LeftSpan:  spanToGen(r.LeftSpan),
+				RightSpan: spanToGen(r.RightSpan),
+			}
+		}
+		genES.Approximate = &approx
+	}
+	if len(es.Semantic) > 0 {
+		sem := make([]generated.SemanticChange, len(es.Semantic))
+		for i, sc := range es.Semantic {
+			sem[i] = generated.SemanticChange{
+				LeftNode:  *toNodeRefPtr(sc.LeftNode),
+				RightNode: *toNodeRefPtr(sc.RightNode),
+				Verdict:   generated.SemanticChangeVerdict(sc.Verdict),
+				Reason:    sc.Reason,
+			}
+		}
+		genES.Semantic = &sem
+	}
+	return genES
+}
+
+func spanToGen(s core.Span) generated.Span {
+	return generated.Span{
+		Start: generated.Location{
+			Line:   s.Start.Line,
+			Column: s.Start.Column,
+			Offset: s.Start.Offset,
+		},
+		End: generated.Location{
+			Line:   s.End.Line,
+			Column: s.End.Column,
+			Offset: s.End.Offset,
+		},
+	}
+}
+
 func detectLanguage(left, right string, s *Server) string {
 	for _, filename := range []string{left, right} {
 		if filename == "" {
