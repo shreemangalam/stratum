@@ -36,12 +36,17 @@ func setupDB(t *testing.T) *store.Postgres {
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second)),
+				WithStartupTimeout(30*time.Second),
+		),
 	)
 	if err != nil {
 		t.Fatalf("starting postgres: %v", err)
 	}
-	t.Cleanup(func() { pgContainer.Terminate(ctx) })
+	t.Cleanup(func() {
+		if err := pgContainer.Terminate(ctx); err != nil {
+			t.Errorf("terminating postgres container: %v", err)
+		}
+	})
 
 	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
@@ -52,13 +57,59 @@ func setupDB(t *testing.T) *store.Postgres {
 	if err != nil {
 		t.Fatalf("connecting: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Errorf("closing test database: %v", err)
+		}
+	})
 
 	if err := db.RunMigrations(ctx); err != nil {
 		t.Fatalf("migrations: %v", err)
 	}
 
 	return db
+}
+
+func mustCreateJob(
+	ctx context.Context,
+	t *testing.T,
+	db *store.Postgres,
+	leftHash, rightHash, leftSource, rightSource string,
+) *store.Job {
+	t.Helper()
+	job, err := db.CreateJob(ctx, leftHash, rightHash, "go", leftSource, rightSource)
+	if err != nil {
+		t.Fatalf("creating job: %v", err)
+	}
+	return job
+}
+
+func mustGetJob(ctx context.Context, t *testing.T, db *store.Postgres, id string) *store.Job {
+	t.Helper()
+	job, err := db.GetJob(ctx, id)
+	if err != nil {
+		t.Fatalf("getting job: %v", err)
+	}
+	if job == nil {
+		t.Fatal("expected job, got nil")
+	}
+	return job
+}
+
+func mustExec(ctx context.Context, t *testing.T, db *store.Postgres, query string) {
+	t.Helper()
+	if _, err := db.Exec(ctx, query); err != nil {
+		t.Fatalf("executing test SQL: %v", err)
+	}
+}
+
+func mustJobStats(ctx context.Context, t *testing.T, db *store.Postgres) *store.JobStats {
+	t.Helper()
+	stats, err := db.JobStats(ctx)
+	if err != nil {
+		t.Fatalf("getting job stats: %v", err)
+	}
+	return stats
 }
 
 func TestPing(t *testing.T) {
@@ -120,7 +171,7 @@ func TestGetJob(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	created, _ := db.CreateJob(ctx, "l", "r", "go", "l", "r")
+	created := mustCreateJob(ctx, t, db, "l", "r", "l", "r")
 
 	got, err := db.GetJob(ctx, created.ID)
 	if err != nil {
@@ -149,7 +200,7 @@ func TestFindJobByHashes(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	created, _ := db.CreateJob(ctx, "findl", "findr", "go", "", "")
+	created := mustCreateJob(ctx, t, db, "findl", "findr", "", "")
 
 	found, err := db.FindJobByHashes(ctx, "findl", "findr", "go")
 	if err != nil {
@@ -172,7 +223,7 @@ func TestClaimPendingJob(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	db.CreateJob(ctx, "cl", "cr", "go", "", "")
+	_ = mustCreateJob(ctx, t, db, "cl", "cr", "", "")
 
 	claimed, err := db.ClaimPendingJob(ctx)
 	if err != nil {
@@ -198,7 +249,7 @@ func TestCompleteJob(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	created, _ := db.CreateJob(ctx, "compl", "compr", "go", "", "")
+	created := mustCreateJob(ctx, t, db, "compl", "compr", "", "")
 
 	es := &core.EditScript{
 		Operations: []core.Operation{
@@ -212,7 +263,7 @@ func TestCompleteJob(t *testing.T) {
 		t.Fatalf("completing: %v", err)
 	}
 
-	got, _ := db.GetJob(ctx, created.ID)
+	got := mustGetJob(ctx, t, db, created.ID)
 	if got.Status != store.StatusCompleted {
 		t.Errorf("expected completed, got %s", got.Status)
 	}
@@ -221,7 +272,9 @@ func TestCompleteJob(t *testing.T) {
 	}
 
 	var parsed core.EditScript
-	json.Unmarshal(got.Result, &parsed)
+	if err := json.Unmarshal(got.Result, &parsed); err != nil {
+		t.Fatalf("decoding result: %v", err)
+	}
 	if len(parsed.Operations) != 1 {
 		t.Errorf("expected 1 operation, got %d", len(parsed.Operations))
 	}
@@ -231,13 +284,13 @@ func TestFailJob(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	created, _ := db.CreateJob(ctx, "fl", "fr", "go", "", "")
+	created := mustCreateJob(ctx, t, db, "fl", "fr", "", "")
 
 	if err := db.FailJob(ctx, created.ID, "parse error"); err != nil {
 		t.Fatalf("failing: %v", err)
 	}
 
-	got, _ := db.GetJob(ctx, created.ID)
+	got := mustGetJob(ctx, t, db, created.ID)
 	if got.Status != store.StatusFailed {
 		t.Errorf("expected failed, got %s", got.Status)
 	}
@@ -250,7 +303,7 @@ func TestRecoverStaleJobs(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	db.Exec(ctx, `
+	mustExec(ctx, t, db, `
 		INSERT INTO jobs (left_hash, right_hash, language, status, updated_at)
 		VALUES ('stale1', 'stale2', 'go', 'running', now() - interval '10 minutes')
 	`)
@@ -263,7 +316,7 @@ func TestRecoverStaleJobs(t *testing.T) {
 		t.Errorf("expected 1 recovered, got %d", recovered)
 	}
 
-	stats, _ := db.JobStats(ctx)
+	stats := mustJobStats(ctx, t, db)
 	if stats.Running != 0 {
 		t.Errorf("expected 0 running, got %d", stats.Running)
 	}
@@ -276,8 +329,10 @@ func TestRecoverStaleJobs_IgnoresRecent(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	db.CreateJob(ctx, "recent_l", "recent_r", "go", "", "")
-	db.ClaimPendingJob(ctx)
+	_ = mustCreateJob(ctx, t, db, "recent_l", "recent_r", "", "")
+	if _, err := db.ClaimPendingJob(ctx); err != nil {
+		t.Fatalf("claiming pending job: %v", err)
+	}
 
 	recovered, err := db.RecoverStaleJobs(ctx, 5*time.Minute)
 	if err != nil {
@@ -292,15 +347,15 @@ func TestDeleteOldJobs(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	db.Exec(ctx, `
+	mustExec(ctx, t, db, `
 		INSERT INTO jobs (left_hash, right_hash, language, status, updated_at)
 		VALUES ('old1', 'old2', 'go', 'completed', now() - interval '8 days')
 	`)
-	db.Exec(ctx, `
+	mustExec(ctx, t, db, `
 		INSERT INTO jobs (left_hash, right_hash, language, status, updated_at)
 		VALUES ('old3', 'old4', 'go', 'failed', now() - interval '8 days')
 	`)
-	db.CreateJob(ctx, "new1", "new2", "go", "", "")
+	_ = mustCreateJob(ctx, t, db, "new1", "new2", "", "")
 
 	deleted, err := db.DeleteOldJobs(ctx, 7*24*time.Hour)
 	if err != nil {
@@ -310,7 +365,7 @@ func TestDeleteOldJobs(t *testing.T) {
 		t.Errorf("expected 2 deleted, got %d", deleted)
 	}
 
-	stats, _ := db.JobStats(ctx)
+	stats := mustJobStats(ctx, t, db)
 	total := stats.Pending + stats.Running + stats.Completed + stats.Failed
 	if total != 1 {
 		t.Errorf("expected 1 remaining job, got %d", total)
@@ -321,7 +376,7 @@ func TestDeleteOldJobs_KeepsRunning(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	db.Exec(ctx, `
+	mustExec(ctx, t, db, `
 		INSERT INTO jobs (left_hash, right_hash, language, status, updated_at)
 		VALUES ('run1', 'run2', 'go', 'running', now() - interval '8 days')
 	`)
@@ -339,9 +394,9 @@ func TestJobStats(t *testing.T) {
 	db := setupDB(t)
 	ctx := context.Background()
 
-	db.CreateJob(ctx, "s1", "s2", "go", "", "")
-	db.CreateJob(ctx, "s3", "s4", "go", "", "")
-	db.Exec(ctx, `
+	_ = mustCreateJob(ctx, t, db, "s1", "s2", "", "")
+	_ = mustCreateJob(ctx, t, db, "s3", "s4", "", "")
+	mustExec(ctx, t, db, `
 		INSERT INTO jobs (left_hash, right_hash, language, status)
 		VALUES ('s5', 's6', 'go', 'completed')
 	`)

@@ -37,7 +37,7 @@ func (p *Parser) parsePython(_ context.Context, source []byte) (*core.Tree, erro
 			p.addChild(root, node)
 			i = end
 
-		case indent == 0 && (startsWith(trimmed, "@")):
+		case indent == 0 && startsWith(trimmed, "@"):
 			// Decorator — skip it, let the next def/class pick it up
 			i++
 

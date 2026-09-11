@@ -50,9 +50,13 @@ func SupportedLanguages() []struct {
 	}
 }
 
-func (p *Parser) Language() string     { return p.lang }
+// Language returns the parser's canonical language identifier.
+func (p *Parser) Language() string { return p.lang }
+
+// Extensions returns the filename extensions recognized by the parser.
 func (p *Parser) Extensions() []string { return p.exts }
 
+// Parse converts source text into Stratum's language-neutral tree representation.
 func (p *Parser) Parse(ctx context.Context, source []byte) (*core.Tree, error) {
 	switch p.lang {
 	case "go":

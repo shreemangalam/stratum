@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	_ "github.com/lib/pq"
+	_ "github.com/lib/pq" // Register the PostgreSQL database/sql driver.
 
 	"github.com/shreemangalam/stratum/server/internal/core"
 )
@@ -45,6 +45,7 @@ func (p *Postgres) Close() error {
 	return p.db.Close()
 }
 
+// RunMigrations applies every embedded migration that has not yet been recorded.
 func (p *Postgres) RunMigrations(ctx context.Context) error {
 	_, err := p.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -89,7 +90,7 @@ func (p *Postgres) RunMigrations(ctx context.Context) error {
 		}
 
 		if _, err := tx.ExecContext(ctx, string(content)); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("executing migration %s: %w", entry.Name(), err)
 		}
 
@@ -97,7 +98,7 @@ func (p *Postgres) RunMigrations(ctx context.Context) error {
 			"INSERT INTO schema_migrations (version) VALUES ($1)",
 			entry.Name(),
 		); err != nil {
-			tx.Rollback()
+			_ = tx.Rollback()
 			return fmt.Errorf("recording migration %s: %w", entry.Name(), err)
 		}
 
@@ -137,6 +138,7 @@ func scanJob(row interface{ Scan(dest ...any) error }) (*Job, error) {
 	return job, nil
 }
 
+// CreateJob inserts a pending diff job or returns the existing job for the same inputs.
 func (p *Postgres) CreateJob(ctx context.Context, leftHash, rightHash, language, leftSource, rightSource string) (*Job, error) {
 	job, err := scanJob(p.db.QueryRowContext(ctx, `
 		INSERT INTO jobs (left_hash, right_hash, language, left_source, right_source)
@@ -150,6 +152,7 @@ func (p *Postgres) CreateJob(ctx context.Context, leftHash, rightHash, language,
 	return job, nil
 }
 
+// GetJob retrieves a job by ID and returns nil when it does not exist.
 func (p *Postgres) GetJob(ctx context.Context, id string) (*Job, error) {
 	job, err := scanJob(p.db.QueryRowContext(ctx, `
 		SELECT id, status, left_hash, right_hash, language, result, error, left_source, right_source, created_at, updated_at
@@ -164,6 +167,7 @@ func (p *Postgres) GetJob(ctx context.Context, id string) (*Job, error) {
 	return job, nil
 }
 
+// FindJobByHashes retrieves a job for an exact input and language tuple.
 func (p *Postgres) FindJobByHashes(ctx context.Context, leftHash, rightHash, language string) (*Job, error) {
 	job, err := scanJob(p.db.QueryRowContext(ctx, `
 		SELECT id, status, left_hash, right_hash, language, result, error, left_source, right_source, created_at, updated_at
@@ -178,6 +182,7 @@ func (p *Postgres) FindJobByHashes(ctx context.Context, leftHash, rightHash, lan
 	return job, nil
 }
 
+// ClaimPendingJob atomically claims the oldest pending job for processing.
 func (p *Postgres) ClaimPendingJob(ctx context.Context) (*Job, error) {
 	job, err := scanJob(p.db.QueryRowContext(ctx, `
 		UPDATE jobs
@@ -200,6 +205,7 @@ func (p *Postgres) ClaimPendingJob(ctx context.Context) (*Job, error) {
 	return job, nil
 }
 
+// CompleteJob stores a successful result and marks the job completed.
 func (p *Postgres) CompleteJob(ctx context.Context, id string, result *core.EditScript) error {
 	resultJSON, err := json.Marshal(result)
 	if err != nil {
@@ -216,7 +222,8 @@ func (p *Postgres) CompleteJob(ctx context.Context, id string, result *core.Edit
 	return nil
 }
 
-func (p *Postgres) FailJob(ctx context.Context, id string, errMsg string) error {
+// FailJob records a processing error and marks the job failed.
+func (p *Postgres) FailJob(ctx context.Context, id, errMsg string) error {
 	_, err := p.db.ExecContext(ctx, `
 		UPDATE jobs SET status = 'failed', error = $2, updated_at = now()
 		WHERE id = $1
@@ -227,10 +234,12 @@ func (p *Postgres) FailJob(ctx context.Context, id string, errMsg string) error 
 	return nil
 }
 
+// Ping verifies that the database connection is available.
 func (p *Postgres) Ping(ctx context.Context) error {
 	return p.db.PingContext(ctx)
 }
 
+// RecoverStaleJobs returns abandoned running jobs to the pending state.
 func (p *Postgres) RecoverStaleJobs(ctx context.Context, staleDuration time.Duration) (int, error) {
 	result, err := p.db.ExecContext(ctx, `
 		UPDATE jobs SET status = 'pending', updated_at = now()
@@ -243,6 +252,7 @@ func (p *Postgres) RecoverStaleJobs(ctx context.Context, staleDuration time.Dura
 	return int(n), nil
 }
 
+// DeleteOldJobs removes completed and failed jobs older than the retention period.
 func (p *Postgres) DeleteOldJobs(ctx context.Context, olderThan time.Duration) (int, error) {
 	result, err := p.db.ExecContext(ctx, `
 		DELETE FROM jobs
@@ -261,6 +271,7 @@ func (p *Postgres) Exec(ctx context.Context, query string, args ...any) (sql.Res
 	return p.db.ExecContext(ctx, query, args...)
 }
 
+// JobStats returns aggregate counts grouped by job status.
 func (p *Postgres) JobStats(ctx context.Context) (*JobStats, error) {
 	stats := &JobStats{}
 	err := p.db.QueryRowContext(ctx, `

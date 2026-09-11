@@ -12,10 +12,14 @@ import (
 type JobStatus string
 
 const (
-	StatusPending   JobStatus = "pending"
-	StatusRunning   JobStatus = "running"
+	// StatusPending indicates that a job is waiting for a worker.
+	StatusPending JobStatus = "pending"
+	// StatusRunning indicates that a worker is processing the job.
+	StatusRunning JobStatus = "running"
+	// StatusCompleted indicates that a job produced a result.
 	StatusCompleted JobStatus = "completed"
-	StatusFailed    JobStatus = "failed"
+	// StatusFailed indicates that processing terminated with an error.
+	StatusFailed JobStatus = "failed"
 )
 
 // Job represents a diff computation job.
@@ -49,7 +53,7 @@ type Store interface {
 	FindJobByHashes(ctx context.Context, leftHash, rightHash, language string) (*Job, error)
 	ClaimPendingJob(ctx context.Context) (*Job, error)
 	CompleteJob(ctx context.Context, id string, result *core.EditScript) error
-	FailJob(ctx context.Context, id string, errMsg string) error
+	FailJob(ctx context.Context, id, errMsg string) error
 	RecoverStaleJobs(ctx context.Context, staleDuration time.Duration) (int, error)
 	DeleteOldJobs(ctx context.Context, olderThan time.Duration) (int, error)
 	JobStats(ctx context.Context) (*JobStats, error)

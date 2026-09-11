@@ -6,8 +6,11 @@ package core
 type Verdict string
 
 const (
-	VerdictPreserving    Verdict = "behavior-preserving"
-	VerdictChanging      Verdict = "behavior-changing"
+	// VerdictPreserving identifies a change that retains behavior.
+	VerdictPreserving Verdict = "behavior-preserving"
+	// VerdictChanging identifies a change that alters behavior.
+	VerdictChanging Verdict = "behavior-changing"
+	// VerdictIndeterminate identifies a change without enough evidence for a stronger classification.
 	VerdictIndeterminate Verdict = "indeterminate"
 )
 
@@ -78,7 +81,7 @@ func classifyFunctions(left, right *Tree, m *Matching, ops []Operation) []Semant
 			continue
 		}
 
-		verdict, reason := classifyOps(fl, fr, inside)
+		verdict, reason := classifyOps(inside)
 
 		if verdict == VerdictIndeterminate && reason == "statements reordered" {
 			v, r := ClassifyReordering(fl, fr, inside, left, right, m)
@@ -96,7 +99,7 @@ func classifyFunctions(left, right *Tree, m *Matching, ops []Operation) []Semant
 	return out
 }
 
-func classifyOps(fl, fr *Node, ops []Operation) (Verdict, string) {
+func classifyOps(ops []Operation) (Verdict, string) {
 	onlyRenames := true
 	onlyRenamesAndMoves := true
 	signatureTouched := false

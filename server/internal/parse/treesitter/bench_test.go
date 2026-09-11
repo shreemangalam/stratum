@@ -87,9 +87,10 @@ func generateModifiedGoSource(numFuncs int) []byte {
 	for i := range numFuncs {
 		idx := i
 		// Swap first two functions (move detection).
-		if i == 0 {
+		switch i {
+		case 0:
 			idx = 1
-		} else if i == 1 {
+		case 1:
 			idx = 0
 		}
 

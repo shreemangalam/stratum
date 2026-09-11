@@ -7,9 +7,9 @@ import (
 
 // generateTree builds a synthetic tree with the given breadth and depth.
 // Each internal node has `breadth` children. Total nodes ≈ breadth^depth.
-func generateTree(idStart NodeID, breadth, depth int, kindPrefix string) (*Node, NodeID) {
+func generateTree(idStart NodeID, breadth, depth int) (*Node, NodeID) {
 	id := idStart
-	root := &Node{ID: id, Kind: kindPrefix + "root", Label: "root"}
+	root := &Node{ID: id, Kind: "root", Label: "root"}
 	id++
 
 	if depth <= 0 {
@@ -17,7 +17,7 @@ func generateTree(idStart NodeID, breadth, depth int, kindPrefix string) (*Node,
 	}
 
 	for i := range breadth {
-		child, nextID := generateSubtree(id, breadth, depth-1, kindPrefix, i)
+		child, nextID := generateSubtree(id, breadth, depth-1, i)
 		child.Parent = root
 		root.Children = append(root.Children, child)
 		id = nextID
@@ -25,23 +25,23 @@ func generateTree(idStart NodeID, breadth, depth int, kindPrefix string) (*Node,
 	return root, id
 }
 
-func generateSubtree(idStart NodeID, breadth, depth int, kindPrefix string, index int) (*Node, NodeID) {
+func generateSubtree(idStart NodeID, breadth, depth, index int) (*Node, NodeID) {
 	id := idStart
 	n := &Node{
 		ID:    id,
-		Kind:  fmt.Sprintf("%sfunc", kindPrefix),
+		Kind:  "func",
 		Label: fmt.Sprintf("fn_%d", index),
 	}
 	id++
 
 	if depth <= 0 {
-		n.Kind = fmt.Sprintf("%sleaf", kindPrefix)
+		n.Kind = "leaf"
 		n.Value = fmt.Sprintf("val_%d", index)
 		return n, id
 	}
 
 	for i := range breadth {
-		child, nextID := generateSubtree(id, breadth, depth-1, kindPrefix, i)
+		child, nextID := generateSubtree(id, breadth, depth-1, i)
 		child.Parent = n
 		n.Children = append(n.Children, child)
 		id = nextID
@@ -53,7 +53,7 @@ func generateSubtree(idStart NodeID, breadth, depth int, kindPrefix string, inde
 // left-side tree: one child is renamed, one is moved (reordered), and
 // one new child is inserted. This exercises all three matching phases.
 func generateModifiedTree(idStart NodeID, breadth, depth int) (*Node, NodeID) {
-	root, nextID := generateTree(idStart, breadth, depth, "")
+	root, nextID := generateTree(idStart, breadth, depth)
 	if len(root.Children) < 2 {
 		return root, nextID
 	}
@@ -80,7 +80,7 @@ func generateModifiedTree(idStart NodeID, breadth, depth int) (*Node, NodeID) {
 }
 
 func benchmarkMatchAndEditScript(b *testing.B, breadth, depth int) {
-	leftRoot, nextID := generateTree(1, breadth, depth, "")
+	leftRoot, nextID := generateTree(1, breadth, depth)
 	rightRoot, _ := generateModifiedTree(nextID, breadth, depth)
 
 	lt := NewTree(leftRoot, "bench", nil)
@@ -105,7 +105,7 @@ func BenchmarkMatch_500nodes(b *testing.B)  { benchmarkMatchAndEditScript(b, 7, 
 func BenchmarkMatch_1500nodes(b *testing.B) { benchmarkMatchAndEditScript(b, 6, 4) }
 
 func BenchmarkHash_120nodes(b *testing.B) {
-	root, _ := generateTree(1, 4, 3, "")
+	root, _ := generateTree(1, 4, 3)
 	t := NewTree(root, "bench", nil)
 	b.ReportMetric(float64(t.Size()), "nodes")
 	b.ResetTimer()
@@ -115,7 +115,7 @@ func BenchmarkHash_120nodes(b *testing.B) {
 }
 
 func BenchmarkHash_1500nodes(b *testing.B) {
-	root, _ := generateTree(1, 6, 4, "")
+	root, _ := generateTree(1, 6, 4)
 	t := NewTree(root, "bench", nil)
 	b.ReportMetric(float64(t.Size()), "nodes")
 	b.ResetTimer()
@@ -125,8 +125,8 @@ func BenchmarkHash_1500nodes(b *testing.B) {
 }
 
 func BenchmarkIdenticalTrees_120nodes(b *testing.B) {
-	root1, nextID := generateTree(1, 4, 3, "")
-	root2, _ := generateTree(nextID, 4, 3, "")
+	root1, nextID := generateTree(1, 4, 3)
+	root2, _ := generateTree(nextID, 4, 3)
 	lt := NewTree(root1, "bench", nil)
 	rt := NewTree(root2, "bench", nil)
 	cfg := DefaultMatchConfig()
@@ -140,8 +140,8 @@ func BenchmarkIdenticalTrees_120nodes(b *testing.B) {
 }
 
 func BenchmarkIdenticalTrees_1500nodes(b *testing.B) {
-	root1, nextID := generateTree(1, 6, 4, "")
-	root2, _ := generateTree(nextID, 6, 4, "")
+	root1, nextID := generateTree(1, 6, 4)
+	root2, _ := generateTree(nextID, 6, 4)
 	lt := NewTree(root1, "bench", nil)
 	rt := NewTree(root2, "bench", nil)
 	cfg := DefaultMatchConfig()

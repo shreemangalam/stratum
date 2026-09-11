@@ -76,9 +76,10 @@ func (s *scanner) skipString(quote byte) {
 	s.advance() // opening quote
 	for !s.eof() {
 		ch := s.advance()
-		if ch == '\\' {
+		switch ch {
+		case '\\':
 			s.advance() // skip escaped char
-		} else if ch == quote {
+		case quote:
 			return
 		}
 	}

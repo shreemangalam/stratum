@@ -4,12 +4,18 @@ package core
 type OpKind string
 
 const (
+	// OpInsert adds a node that exists only in the right tree.
 	OpInsert OpKind = "insert"
+	// OpDelete removes a node that exists only in the left tree.
 	OpDelete OpKind = "delete"
-	OpMove   OpKind = "move"
+	// OpMove relocates a matched node within the tree.
+	OpMove OpKind = "move"
+	// OpRename changes the label of a matched node.
 	OpRename OpKind = "rename"
+	// OpUpdate changes the value of a matched node.
 	OpUpdate OpKind = "update"
-	OpAlign  OpKind = "align"
+	// OpAlign records a structural alignment without a content change.
+	OpAlign OpKind = "align"
 )
 
 // NodeRef references a node in its source tree.

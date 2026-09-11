@@ -16,7 +16,7 @@ func (s *stubParser) Parse(_ context.Context, _ []byte) (*core.Tree, error) {
 	return nil, nil
 }
 
-func (s *stubParser) Language() string    { return s.lang }
+func (s *stubParser) Language() string     { return s.lang }
 func (s *stubParser) Extensions() []string { return s.exts }
 
 func TestRegistry_RegisterAndLookup(t *testing.T) {

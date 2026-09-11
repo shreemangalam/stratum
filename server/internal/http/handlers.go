@@ -18,10 +18,12 @@ import (
 	"github.com/shreemangalam/stratum/server/internal/store"
 )
 
-type createDiffRequest = generated.CreateDiffRequest
-type errorResponse = generated.ErrorResponse
-type languageInfo = generated.LanguageInfo
-type languagesResponse = generated.LanguagesResponse
+type (
+	createDiffRequest = generated.CreateDiffRequest
+	errorResponse     = generated.ErrorResponse
+	languageInfo      = generated.LanguageInfo
+	languagesResponse = generated.LanguagesResponse
+)
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
@@ -164,12 +166,18 @@ func (s *Server) handleStreamDiff(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Connection", "keep-alive")
 
 	if job.Status == store.StatusCompleted || job.Status == store.StatusFailed {
-		fmt.Fprintf(w, "event: status\ndata: %s\n\n", job.Status)
+		if err := writeSSE(w, "status", job.Status); err != nil {
+			return
+		}
 		if job.Status == store.StatusCompleted && job.Result != nil {
-			fmt.Fprintf(w, "event: result\ndata: %s\n\n", string(job.Result))
+			if err := writeSSE(w, "result", string(job.Result)); err != nil {
+				return
+			}
 		}
 		if job.Status == store.StatusFailed && job.Error != "" {
-			fmt.Fprintf(w, "event: error\ndata: %s\n\n", job.Error)
+			if err := writeSSE(w, "error", job.Error); err != nil {
+				return
+			}
 		}
 		flusher.Flush()
 		return
@@ -183,18 +191,26 @@ func (s *Server) handleStreamDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if job.Status == store.StatusCompleted || job.Status == store.StatusFailed {
-		fmt.Fprintf(w, "event: status\ndata: %s\n\n", job.Status)
+		if err := writeSSE(w, "status", job.Status); err != nil {
+			return
+		}
 		if job.Status == store.StatusCompleted && job.Result != nil {
-			fmt.Fprintf(w, "event: result\ndata: %s\n\n", string(job.Result))
+			if err := writeSSE(w, "result", string(job.Result)); err != nil {
+				return
+			}
 		}
 		if job.Status == store.StatusFailed && job.Error != "" {
-			fmt.Fprintf(w, "event: error\ndata: %s\n\n", job.Error)
+			if err := writeSSE(w, "error", job.Error); err != nil {
+				return
+			}
 		}
 		flusher.Flush()
 		return
 	}
 
-	fmt.Fprintf(w, "event: status\ndata: %s\n\n", job.Status)
+	if err := writeSSE(w, "status", job.Status); err != nil {
+		return
+	}
 	flusher.Flush()
 
 	for {
@@ -205,7 +221,9 @@ func (s *Server) handleStreamDiff(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Type, event.Data)
+			if err := writeSSE(w, event.Type, event.Data); err != nil {
+				return
+			}
 			flusher.Flush()
 
 			if event.Type == "result" || (event.Type == "status" && (event.Data == "completed" || event.Data == "failed")) {
@@ -218,7 +236,12 @@ func (s *Server) handleStreamDiff(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(v)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeSSE(w http.ResponseWriter, event string, data any) error {
+	_, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
+	return err
 }
 
 func generateID() string {
@@ -236,7 +259,7 @@ func isValidUUID(s string) bool {
 			if c != '-' {
 				return false
 			}
-		} else if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+		} else if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return false
 		}
 	}
@@ -389,8 +412,10 @@ func validateRepoPath(repoPath string) error {
 	return nil
 }
 
-type gitFilesRequest = generated.GitFilesRequest
-type changedFile = generated.ChangedFile
+type (
+	gitFilesRequest = generated.GitFilesRequest
+	changedFile     = generated.ChangedFile
+)
 
 func (s *Server) handleGitFiles(w http.ResponseWriter, r *http.Request) {
 	var req gitFilesRequest

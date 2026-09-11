@@ -150,7 +150,7 @@ func withRecover(next http.Handler) http.Handler {
 				)
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusInternalServerError)
-				fmt.Fprint(w, `{"error":"internal server error"}`)
+				_, _ = fmt.Fprint(w, `{"error":"internal server error"}`)
 			}
 		}()
 		next.ServeHTTP(w, r)

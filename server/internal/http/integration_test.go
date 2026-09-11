@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os/exec"
@@ -31,11 +32,35 @@ type testEnv struct {
 	cancel context.CancelFunc
 }
 
-func (e *testEnv) close() {
+func (e *testEnv) close(t *testing.T) {
+	t.Helper()
 	e.server.Close()
 	e.pool.Stop()
 	e.cancel()
-	e.db.Close()
+	if err := e.db.Close(); err != nil {
+		t.Errorf("closing test database: %v", err)
+	}
+}
+
+func closeBody(t *testing.T, body io.Closer) {
+	t.Helper()
+	if err := body.Close(); err != nil {
+		t.Errorf("closing response body: %v", err)
+	}
+}
+
+func decodeJSON(t *testing.T, r io.Reader, target any) {
+	t.Helper()
+	if err := json.NewDecoder(r).Decode(target); err != nil {
+		t.Fatalf("decoding JSON response: %v", err)
+	}
+}
+
+func unmarshalJSON(t *testing.T, data []byte, target any) {
+	t.Helper()
+	if err := json.Unmarshal(data, target); err != nil {
+		t.Fatalf("decoding JSON result: %v", err)
+	}
 }
 
 func setupTestEnv(t *testing.T) *testEnv {
@@ -52,12 +77,17 @@ func setupTestEnv(t *testing.T) *testEnv {
 		testcontainers.WithWaitStrategy(
 			wait.ForLog("database system is ready to accept connections").
 				WithOccurrence(2).
-				WithStartupTimeout(30*time.Second)),
+				WithStartupTimeout(30*time.Second),
+		),
 	)
 	if err != nil {
 		t.Fatalf("starting postgres container: %v", err)
 	}
-	t.Cleanup(func() { pgContainer.Terminate(ctx) })
+	t.Cleanup(func() {
+		if err := pgContainer.Terminate(ctx); err != nil {
+			t.Errorf("terminating postgres container: %v", err)
+		}
+	})
 
 	connStr, err := pgContainer.ConnectionString(ctx, "sslmode=disable")
 	if err != nil {
@@ -101,20 +131,20 @@ func setupTestEnv(t *testing.T) *testEnv {
 
 func TestHealthEndpoint(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	resp, err := http.Get(env.server.URL + "/api/v1/health")
 	if err != nil {
 		t.Fatalf("health request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
 
 	var body map[string]string
-	json.NewDecoder(resp.Body).Decode(&body)
+	decodeJSON(t, resp.Body, &body)
 	if body["status"] != "ok" {
 		t.Errorf("expected status ok, got %q", body["status"])
 	}
@@ -125,13 +155,13 @@ func TestHealthEndpoint(t *testing.T) {
 
 func TestLanguagesEndpoint(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	resp, err := http.Get(env.server.URL + "/api/v1/languages")
 	if err != nil {
 		t.Fatalf("languages request: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
@@ -142,7 +172,7 @@ func TestLanguagesEndpoint(t *testing.T) {
 			ID string `json:"id"`
 		} `json:"languages"`
 	}
-	json.NewDecoder(resp.Body).Decode(&body)
+	decodeJSON(t, resp.Body, &body)
 
 	ids := make(map[string]bool)
 	for _, l := range body.Languages {
@@ -158,7 +188,7 @@ func TestLanguagesEndpoint(t *testing.T) {
 
 func TestCreateDiff_GoParsesAndCompletes(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	payload := `{
 		"left": {"content": "package main\n\nfunc hello() {\n\treturn \"hello\"\n}\n"},
@@ -170,7 +200,7 @@ func TestCreateDiff_GoParsesAndCompletes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create diff: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 201 or 200, got %d", resp.StatusCode)
@@ -181,7 +211,7 @@ func TestCreateDiff_GoParsesAndCompletes(t *testing.T) {
 		Status   string `json:"status"`
 		Language string `json:"language"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
+	decodeJSON(t, resp.Body, &job)
 
 	if job.ID == "" {
 		t.Fatal("expected job ID")
@@ -200,8 +230,8 @@ func TestCreateDiff_GoParsesAndCompletes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("polling diff: %v", err)
 		}
-		json.NewDecoder(pollResp.Body).Decode(&result)
-		pollResp.Body.Close()
+		decodeJSON(t, pollResp.Body, &result)
+		closeBody(t, pollResp.Body)
 
 		if result.Status == "completed" || result.Status == "failed" {
 			break
@@ -221,7 +251,7 @@ func TestCreateDiff_GoParsesAndCompletes(t *testing.T) {
 			Kind string `json:"kind"`
 		} `json:"operations"`
 	}
-	json.Unmarshal(result.Result, &editScript)
+	unmarshalJSON(t, result.Result, &editScript)
 
 	if len(editScript.Operations) == 0 {
 		t.Error("expected at least one operation")
@@ -230,7 +260,7 @@ func TestCreateDiff_GoParsesAndCompletes(t *testing.T) {
 
 func TestCreateDiff_XSLTParsesAndCompletes(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	payload := `{
 		"left": {"content": "<?xml version=\"1.0\"?><xsl:stylesheet version=\"2.0\" xmlns:xsl=\"http://www.w3.org/1999/XSL/Transform\"><xsl:template match=\"/\"><out/></xsl:template></xsl:stylesheet>"},
@@ -242,7 +272,7 @@ func TestCreateDiff_XSLTParsesAndCompletes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create diff: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 201 or 200, got %d", resp.StatusCode)
@@ -251,7 +281,7 @@ func TestCreateDiff_XSLTParsesAndCompletes(t *testing.T) {
 	var job struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
+	decodeJSON(t, resp.Body, &job)
 
 	var result struct {
 		Status string          `json:"status"`
@@ -263,8 +293,8 @@ func TestCreateDiff_XSLTParsesAndCompletes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("polling diff: %v", err)
 		}
-		json.NewDecoder(pollResp.Body).Decode(&result)
-		pollResp.Body.Close()
+		decodeJSON(t, pollResp.Body, &result)
+		closeBody(t, pollResp.Body)
 
 		if result.Status == "completed" || result.Status == "failed" {
 			break
@@ -281,7 +311,7 @@ func TestCreateDiff_XSLTParsesAndCompletes(t *testing.T) {
 			Kind string `json:"kind"`
 		} `json:"operations"`
 	}
-	json.Unmarshal(result.Result, &editScript)
+	unmarshalJSON(t, result.Result, &editScript)
 
 	if len(editScript.Operations) == 0 {
 		t.Error("expected at least one operation for XSLT structural diff")
@@ -290,7 +320,7 @@ func TestCreateDiff_XSLTParsesAndCompletes(t *testing.T) {
 
 func TestCreateDiff_Idempotent(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	payload := `{
 		"left": {"content": "package main\n\nfunc a() {}"},
@@ -305,8 +335,8 @@ func TestCreateDiff_Idempotent(t *testing.T) {
 	var job1 struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp1.Body).Decode(&job1)
-	resp1.Body.Close()
+	decodeJSON(t, resp1.Body, &job1)
+	closeBody(t, resp1.Body)
 
 	resp2, err := http.Post(env.server.URL+"/api/v1/diffs", "application/json", strings.NewReader(payload))
 	if err != nil {
@@ -315,8 +345,8 @@ func TestCreateDiff_Idempotent(t *testing.T) {
 	var job2 struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp2.Body).Decode(&job2)
-	resp2.Body.Close()
+	decodeJSON(t, resp2.Body, &job2)
+	closeBody(t, resp2.Body)
 
 	if job1.ID != job2.ID {
 		t.Errorf("expected same job ID for idempotent request, got %q and %q", job1.ID, job2.ID)
@@ -325,7 +355,7 @@ func TestCreateDiff_Idempotent(t *testing.T) {
 
 func TestCreateDiff_LanguageDifferentiates(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	content := `{"left":{"content":"<root>a</root>"},"right":{"content":"<root>b</root>"},"language":"%s"}`
 
@@ -337,8 +367,8 @@ func TestCreateDiff_LanguageDifferentiates(t *testing.T) {
 	var job1 struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp1.Body).Decode(&job1)
-	resp1.Body.Close()
+	decodeJSON(t, resp1.Body, &job1)
+	closeBody(t, resp1.Body)
 
 	resp2, err := http.Post(env.server.URL+"/api/v1/diffs", "application/json",
 		strings.NewReader(fmt.Sprintf(content, "xslt")))
@@ -348,8 +378,8 @@ func TestCreateDiff_LanguageDifferentiates(t *testing.T) {
 	var job2 struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp2.Body).Decode(&job2)
-	resp2.Body.Close()
+	decodeJSON(t, resp2.Body, &job2)
+	closeBody(t, resp2.Body)
 
 	if job1.ID == job2.ID {
 		t.Error("same content with different language should produce different jobs")
@@ -358,7 +388,7 @@ func TestCreateDiff_LanguageDifferentiates(t *testing.T) {
 
 func TestCreateDiff_ValidationErrors(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	tests := []struct {
 		name    string
@@ -379,7 +409,7 @@ func TestCreateDiff_ValidationErrors(t *testing.T) {
 			if err != nil {
 				t.Fatalf("request: %v", err)
 			}
-			resp.Body.Close()
+			closeBody(t, resp.Body)
 			if resp.StatusCode != tt.status {
 				t.Errorf("expected %d, got %d", tt.status, resp.StatusCode)
 			}
@@ -389,13 +419,13 @@ func TestCreateDiff_ValidationErrors(t *testing.T) {
 
 func TestGetDiff_NotFound(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	resp, err := http.Get(env.server.URL + "/api/v1/diffs/nonexistent-id")
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	resp.Body.Close()
+	closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
@@ -404,7 +434,7 @@ func TestGetDiff_NotFound(t *testing.T) {
 
 func TestRequestID_Propagated(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	req, _ := http.NewRequest("GET", env.server.URL+"/api/v1/health", nil)
 	req.Header.Set("X-Request-ID", "test-123")
@@ -413,7 +443,7 @@ func TestRequestID_Propagated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	resp.Body.Close()
+	closeBody(t, resp.Body)
 
 	if got := resp.Header.Get("X-Request-ID"); got != "test-123" {
 		t.Errorf("expected X-Request-ID test-123, got %q", got)
@@ -422,13 +452,13 @@ func TestRequestID_Propagated(t *testing.T) {
 
 func TestRequestID_Generated(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	resp, err := http.Get(env.server.URL + "/api/v1/health")
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	resp.Body.Close()
+	closeBody(t, resp.Body)
 
 	if got := resp.Header.Get("X-Request-ID"); got == "" {
 		t.Error("expected generated X-Request-ID")
@@ -437,7 +467,7 @@ func TestRequestID_Generated(t *testing.T) {
 
 func TestStreamDiff_CompletedJob(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	payload := `{
 		"left": {"content": "package main\n\nfunc hello() {\n\treturn \"hello\"\n}\n"},
@@ -452,8 +482,8 @@ func TestStreamDiff_CompletedJob(t *testing.T) {
 	var job struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
-	resp.Body.Close()
+	decodeJSON(t, resp.Body, &job)
+	closeBody(t, resp.Body)
 
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
@@ -464,8 +494,8 @@ func TestStreamDiff_CompletedJob(t *testing.T) {
 		var s struct {
 			Status string `json:"status"`
 		}
-		json.NewDecoder(pollResp.Body).Decode(&s)
-		pollResp.Body.Close()
+		decodeJSON(t, pollResp.Body, &s)
+		closeBody(t, pollResp.Body)
 		if s.Status == "completed" {
 			break
 		}
@@ -476,7 +506,7 @@ func TestStreamDiff_CompletedJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stream request: %v", err)
 	}
-	defer sseResp.Body.Close()
+	defer closeBody(t, sseResp.Body)
 
 	if sseResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", sseResp.StatusCode)
@@ -504,13 +534,13 @@ func TestStreamDiff_CompletedJob(t *testing.T) {
 
 func TestStreamDiff_NotFound(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	resp, err := http.Get(env.server.URL + "/api/v1/diffs/00000000-0000-0000-0000-000000000000/stream")
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	resp.Body.Close()
+	closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusNotFound {
 		t.Errorf("expected 404, got %d", resp.StatusCode)
@@ -519,7 +549,7 @@ func TestStreamDiff_NotFound(t *testing.T) {
 
 func TestStatsEndpoint(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	payload := `{
 		"left": {"content": "package main\n\nfunc a() {}"},
@@ -530,7 +560,7 @@ func TestStatsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create diff: %v", err)
 	}
-	resp.Body.Close()
+	closeBody(t, resp.Body)
 
 	deadline := time.Now().Add(10 * time.Second)
 	for time.Now().Before(deadline) {
@@ -544,8 +574,8 @@ func TestStatsEndpoint(t *testing.T) {
 			} `json:"jobs"`
 			CacheSize int `json:"cache_size"`
 		}
-		json.NewDecoder(statsResp.Body).Decode(&body)
-		statsResp.Body.Close()
+		decodeJSON(t, statsResp.Body, &body)
+		closeBody(t, statsResp.Body)
 
 		if body.Jobs.Completed >= 1 {
 			if body.CacheSize == 0 {
@@ -560,7 +590,7 @@ func TestStatsEndpoint(t *testing.T) {
 
 func TestStaleJobRecovery(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	_, err := env.db.Exec(context.Background(), `
 		INSERT INTO jobs (left_hash, right_hash, language, status, updated_at)
@@ -589,7 +619,7 @@ func TestStaleJobRecovery(t *testing.T) {
 
 func TestCreateDiff_JavaScriptParsesAndCompletes(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	payload := `{
 		"left": {"content": "function hello() {\n  return 'hello';\n}\n"},
@@ -601,7 +631,7 @@ func TestCreateDiff_JavaScriptParsesAndCompletes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create diff: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 201 or 200, got %d", resp.StatusCode)
@@ -611,7 +641,7 @@ func TestCreateDiff_JavaScriptParsesAndCompletes(t *testing.T) {
 		ID       string `json:"id"`
 		Language string `json:"language"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
+	decodeJSON(t, resp.Body, &job)
 	if job.Language != "javascript" {
 		t.Errorf("expected javascript, got %q", job.Language)
 	}
@@ -626,8 +656,8 @@ func TestCreateDiff_JavaScriptParsesAndCompletes(t *testing.T) {
 		if err != nil {
 			t.Fatalf("polling: %v", err)
 		}
-		json.NewDecoder(pollResp.Body).Decode(&result)
-		pollResp.Body.Close()
+		decodeJSON(t, pollResp.Body, &result)
+		closeBody(t, pollResp.Body)
 		if result.Status == "completed" || result.Status == "failed" {
 			break
 		}
@@ -643,7 +673,7 @@ func TestCreateDiff_JavaScriptParsesAndCompletes(t *testing.T) {
 			Kind string `json:"kind"`
 		} `json:"operations"`
 	}
-	json.Unmarshal(result.Result, &es)
+	unmarshalJSON(t, result.Result, &es)
 	if len(es.Operations) == 0 {
 		t.Error("expected operations for JS rename")
 	}
@@ -651,7 +681,7 @@ func TestCreateDiff_JavaScriptParsesAndCompletes(t *testing.T) {
 
 func TestCreateDiff_PythonParsesAndCompletes(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	payload := `{
 		"left": {"content": "def greet(name):\n    return f'Hello, {name}'\n"},
@@ -663,7 +693,7 @@ func TestCreateDiff_PythonParsesAndCompletes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create diff: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 201/200, got %d", resp.StatusCode)
@@ -672,7 +702,7 @@ func TestCreateDiff_PythonParsesAndCompletes(t *testing.T) {
 	var job struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
+	decodeJSON(t, resp.Body, &job)
 
 	var result struct {
 		Status string `json:"status"`
@@ -680,8 +710,8 @@ func TestCreateDiff_PythonParsesAndCompletes(t *testing.T) {
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		pollResp, _ := http.Get(fmt.Sprintf("%s/api/v1/diffs/%s", env.server.URL, job.ID))
-		json.NewDecoder(pollResp.Body).Decode(&result)
-		pollResp.Body.Close()
+		decodeJSON(t, pollResp.Body, &result)
+		closeBody(t, pollResp.Body)
 		if result.Status == "completed" || result.Status == "failed" {
 			break
 		}
@@ -694,7 +724,7 @@ func TestCreateDiff_PythonParsesAndCompletes(t *testing.T) {
 
 func TestCreateDiff_JavaParsesAndCompletes(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	payload := `{
 		"left": {"content": "package com.example;\n\npublic class Main {\n    public void run() {}\n}\n"},
@@ -706,7 +736,7 @@ func TestCreateDiff_JavaParsesAndCompletes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create diff: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 201/200, got %d", resp.StatusCode)
@@ -715,7 +745,7 @@ func TestCreateDiff_JavaParsesAndCompletes(t *testing.T) {
 	var job struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
+	decodeJSON(t, resp.Body, &job)
 
 	var result struct {
 		Status string `json:"status"`
@@ -723,8 +753,8 @@ func TestCreateDiff_JavaParsesAndCompletes(t *testing.T) {
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
 		pollResp, _ := http.Get(fmt.Sprintf("%s/api/v1/diffs/%s", env.server.URL, job.ID))
-		json.NewDecoder(pollResp.Body).Decode(&result)
-		pollResp.Body.Close()
+		decodeJSON(t, pollResp.Body, &result)
+		closeBody(t, pollResp.Body)
 		if result.Status == "completed" || result.Status == "failed" {
 			break
 		}
@@ -737,7 +767,7 @@ func TestCreateDiff_JavaParsesAndCompletes(t *testing.T) {
 
 func TestGetDiff_IncludesSource(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	leftContent := "package main\n\nfunc original() {}\n"
 	rightContent := "package main\n\nfunc modified() {}\n"
@@ -755,8 +785,8 @@ func TestGetDiff_IncludesSource(t *testing.T) {
 	var job struct {
 		ID string `json:"id"`
 	}
-	json.NewDecoder(resp.Body).Decode(&job)
-	resp.Body.Close()
+	decodeJSON(t, resp.Body, &job)
+	closeBody(t, resp.Body)
 
 	deadline := time.Now().Add(15 * time.Second)
 	for time.Now().Before(deadline) {
@@ -764,8 +794,8 @@ func TestGetDiff_IncludesSource(t *testing.T) {
 		var s struct {
 			Status string `json:"status"`
 		}
-		json.NewDecoder(pollResp.Body).Decode(&s)
-		pollResp.Body.Close()
+		decodeJSON(t, pollResp.Body, &s)
+		closeBody(t, pollResp.Body)
 		if s.Status == "completed" {
 			break
 		}
@@ -776,14 +806,14 @@ func TestGetDiff_IncludesSource(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer getResp.Body.Close()
+	defer closeBody(t, getResp.Body)
 
 	var result struct {
 		LeftSource  string `json:"left_source"`
 		RightSource string `json:"right_source"`
 		Language    string `json:"language"`
 	}
-	json.NewDecoder(getResp.Body).Decode(&result)
+	decodeJSON(t, getResp.Body, &result)
 
 	if result.LeftSource != leftContent {
 		t.Errorf("left_source mismatch:\ngot:  %q\nwant: %q", result.LeftSource, leftContent)
@@ -798,7 +828,7 @@ func TestGetDiff_IncludesSource(t *testing.T) {
 
 func TestDeleteOldJobs(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	_, err := env.db.Exec(context.Background(), `
 		INSERT INTO jobs (left_hash, right_hash, language, status, updated_at)
@@ -826,7 +856,7 @@ func TestDeleteOldJobs(t *testing.T) {
 
 func TestCORS_Preflight(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	req, _ := http.NewRequest("OPTIONS", env.server.URL+"/api/v1/diffs", nil)
 	req.Header.Set("Origin", "http://localhost:3000")
@@ -835,7 +865,7 @@ func TestCORS_Preflight(t *testing.T) {
 	if err != nil {
 		t.Fatalf("request: %v", err)
 	}
-	resp.Body.Close()
+	closeBody(t, resp.Body)
 
 	if resp.StatusCode != http.StatusNoContent {
 		t.Errorf("expected 204, got %d", resp.StatusCode)

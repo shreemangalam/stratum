@@ -43,10 +43,10 @@ type diffEntry struct {
 
 // Cache is a TTL-based in-memory cache for parse and diff results.
 type Cache struct {
-	mu       sync.RWMutex
-	ttl      time.Duration
-	parses   map[string]parseEntry
-	diffs    map[string]diffEntry
+	mu     sync.RWMutex
+	ttl    time.Duration
+	parses map[string]parseEntry
+	diffs  map[string]diffEntry
 }
 
 // New creates a cache with the given TTL.

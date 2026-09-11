@@ -117,15 +117,15 @@ func TestSubscribers_ConcurrentAccess(t *testing.T) {
 	subs := NewSubscribers()
 	var wg sync.WaitGroup
 
-	for i := range 10 {
+	for range 10 {
 		wg.Add(1)
-		go func(id int) {
+		go func() {
 			defer wg.Done()
 			ch := subs.Subscribe("job-1")
 			subs.Send("job-1", Event{Type: "status", Data: "running"})
 			time.Sleep(time.Millisecond)
 			subs.Unsubscribe("job-1", ch)
-		}(i)
+		}()
 	}
 
 	wg.Wait()

@@ -36,10 +36,13 @@ func New() *Parser {
 	return &Parser{}
 }
 
+// Language returns the canonical XSLT language identifier.
 func (p *Parser) Language() string { return "xslt" }
 
+// Extensions returns the XML and XSLT filename extensions handled by the parser.
 func (p *Parser) Extensions() []string { return []string{".xsl", ".xslt", ".xml"} }
 
+// Parse converts XML or XSLT source into Stratum's tree representation.
 func (p *Parser) Parse(_ context.Context, source []byte) (*core.Tree, error) {
 	lines := lineIndex(source)
 	dec := xml.NewDecoder(strings.NewReader(string(source)))

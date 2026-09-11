@@ -25,10 +25,10 @@ func hashNode(n *Node) string {
 	}
 
 	h := sha256.New()
-	fmt.Fprintf(h, "kind:%s\n", n.Kind)
-	fmt.Fprintf(h, "label:%s\n", n.Label)
-	fmt.Fprintf(h, "value:%s\n", n.Value)
-	fmt.Fprintf(h, "children:%s\n", strings.Join(childHashes, ","))
+	_, _ = fmt.Fprintf(h, "kind:%s\n", n.Kind)
+	_, _ = fmt.Fprintf(h, "label:%s\n", n.Label)
+	_, _ = fmt.Fprintf(h, "value:%s\n", n.Value)
+	_, _ = fmt.Fprintf(h, "children:%s\n", strings.Join(childHashes, ","))
 
 	n.Hash = fmt.Sprintf("%x", h.Sum(nil))
 	return n.Hash

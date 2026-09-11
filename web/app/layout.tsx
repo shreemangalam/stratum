@@ -2,6 +2,7 @@ import "@fontsource-variable/inter";
 import "@fontsource-variable/jetbrains-mono";
 import type { Metadata } from "next";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { ThemeToggle } from "@/components/theme-toggle";
 import "./globals.css";
 
@@ -13,7 +14,7 @@ export const metadata: Metadata = {
 // Runs before paint so the stored theme applies without a flash.
 const themeInit = `(function(){var t;try{t=localStorage.getItem("stratum-theme")}catch(e){}if(t!=="light"&&t!=="dark"){t="dark"}document.documentElement.setAttribute("data-theme",t)})();`;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
 	return (
 		<html lang="en" suppressHydrationWarning>
 			<head>

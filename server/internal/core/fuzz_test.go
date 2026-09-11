@@ -16,7 +16,7 @@ func buildFuzzTree(data []byte, idStart NodeID) (*Tree, NodeID) {
 
 	breadth := int(data[0]%8) + 1
 	for i := range breadth {
-		if int(i+1) >= len(data) {
+		if i+1 >= len(data) {
 			break
 		}
 		b := data[(i+1)%len(data)]
@@ -32,7 +32,7 @@ func buildFuzzTree(data []byte, idStart NodeID) (*Tree, NodeID) {
 
 		depth := int(b%3) + 1
 		for d := range depth {
-			if int(i+d+2) >= len(data) {
+			if i+d+2 >= len(data) {
 				break
 			}
 			gb := data[(i+d+2)%len(data)]

@@ -2,9 +2,9 @@ package core
 
 import "testing"
 
-// assignTree builds: assignment_statement(tok) -> [assignment_lhs -> [idents...], assignment_rhs -> [exprs...]]
-func assignTree(base NodeID, tok string, lhsNames []string, rhsNodes ...*Node) *Node {
-	node := &Node{ID: base, Kind: "assignment_statement", Label: tok}
+// assignTree builds: assignment_statement(:=) -> [assignment_lhs -> [idents...], assignment_rhs -> [exprs...]]
+func assignTree(base NodeID, lhsNames []string, rhsNodes ...*Node) *Node {
+	node := &Node{ID: base, Kind: "assignment_statement", Label: ":="}
 	nextID := base + 1
 
 	lhs := &Node{ID: nextID, Kind: "assignment_lhs", Parent: node}
@@ -17,7 +17,6 @@ func assignTree(base NodeID, tok string, lhsNames []string, rhsNodes ...*Node) *
 	node.Children = append(node.Children, lhs)
 
 	rhs := &Node{ID: nextID, Kind: "assignment_rhs", Parent: node}
-	nextID++
 	for _, r := range rhsNodes {
 		r.Parent = rhs
 		rhs.Children = append(rhs.Children, r)
@@ -48,7 +47,7 @@ func callNode(id NodeID, fnName string, args ...*Node) *Node {
 
 func TestExtractDefUse_SimpleAssign(t *testing.T) {
 	// x := 1
-	stmt := assignTree(1, ":=", []string{"x"}, litNode(10, "1"))
+	stmt := assignTree(1, []string{"x"}, litNode(10, "1"))
 	du := ExtractDefUse(stmt)
 
 	if !du.Defs["x"] {
@@ -72,7 +71,7 @@ func TestExtractDefUse_AssignWithUse(t *testing.T) {
 	lit := &Node{ID: 12, Kind: "literal", Value: "1", Parent: rhs}
 	rhs.Children = []*Node{yIdent, lit}
 
-	stmt := assignTree(1, ":=", []string{"x"}, rhs)
+	stmt := assignTree(1, []string{"x"}, rhs)
 	du := ExtractDefUse(stmt)
 
 	if !du.Defs["x"] {
@@ -88,7 +87,7 @@ func TestExtractDefUse_AssignWithUse(t *testing.T) {
 
 func TestExtractDefUse_MultiAssign(t *testing.T) {
 	// x, y := 1, 2
-	stmt := assignTree(1, ":=", []string{"x", "y"}, litNode(10, "1"), litNode(11, "2"))
+	stmt := assignTree(1, []string{"x", "y"}, litNode(10, "1"), litNode(11, "2"))
 	du := ExtractDefUse(stmt)
 
 	if !du.Defs["x"] || !du.Defs["y"] {
@@ -101,7 +100,7 @@ func TestExtractDefUse_MultiAssign(t *testing.T) {
 
 func TestExtractDefUse_CallHasSideEffects(t *testing.T) {
 	// x := f(y)
-	stmt := assignTree(1, ":=", []string{"x"}, callNode(10, "f", identNode(20, "y")))
+	stmt := assignTree(1, []string{"x"}, callNode(10, "f", identNode(20, "y")))
 	du := ExtractDefUse(stmt)
 
 	if !du.Defs["x"] {
@@ -198,8 +197,8 @@ func TestDefUseSetsIndependent_WriteWriteConflict(t *testing.T) {
 }
 
 // assignStmtForBlock builds a complete assignment statement with parent linkage.
-func assignStmtForBlock(base NodeID, tok string, lhsNames []string, rhsNodes ...*Node) *Node {
-	stmt := assignTree(base, tok, lhsNames, rhsNodes...)
+func assignStmtForBlock(base NodeID, lhsNames []string, rhsNodes ...*Node) *Node {
+	stmt := assignTree(base, lhsNames, rhsNodes...)
 	linkChildren(stmt)
 	return stmt
 }
@@ -207,15 +206,15 @@ func assignStmtForBlock(base NodeID, tok string, lhsNames []string, rhsNodes ...
 func TestClassifyReordering_IndependentSwap(t *testing.T) {
 	// Left: x := 1; y := 2
 	// Right: y := 2; x := 1
-	s1L := assignStmtForBlock(10, ":=", []string{"x"}, litNode(20, "1"))
-	s2L := assignStmtForBlock(30, ":=", []string{"y"}, litNode(40, "2"))
+	s1L := assignStmtForBlock(10, []string{"x"}, litNode(20, "1"))
+	s2L := assignStmtForBlock(30, []string{"y"}, litNode(40, "2"))
 	leftFn := linkChildren(buildTree(1, "function_declaration", "f",
 		buildTree(2, "parameter_list", ""),
 		&Node{ID: 3, Kind: "block", Children: []*Node{s1L, s2L}},
 	))
 
-	s1R := assignStmtForBlock(110, ":=", []string{"y"}, litNode(120, "2"))
-	s2R := assignStmtForBlock(130, ":=", []string{"x"}, litNode(140, "1"))
+	s1R := assignStmtForBlock(110, []string{"y"}, litNode(120, "2"))
+	s2R := assignStmtForBlock(130, []string{"x"}, litNode(140, "1"))
 	rightFn := linkChildren(buildTree(101, "function_declaration", "f",
 		buildTree(102, "parameter_list", ""),
 		&Node{ID: 103, Kind: "block", Children: []*Node{s1R, s2R}},
@@ -246,10 +245,10 @@ func TestClassifyReordering_IndependentSwap(t *testing.T) {
 func TestClassifyReordering_DependentSwap(t *testing.T) {
 	// Left: x := 1; y := x + 1
 	// Right: y := x + 1; x := 1
-	s1L := assignStmtForBlock(10, ":=", []string{"x"}, litNode(20, "1"))
+	s1L := assignStmtForBlock(10, []string{"x"}, litNode(20, "1"))
 	rhsBin := &Node{ID: 41, Kind: "binary_expression", Label: "+"}
 	rhsBin.Children = []*Node{identNode(42, "x"), litNode(43, "1")}
-	s2L := assignStmtForBlock(30, ":=", []string{"y"}, rhsBin)
+	s2L := assignStmtForBlock(30, []string{"y"}, rhsBin)
 
 	leftFn := linkChildren(buildTree(1, "function_declaration", "f",
 		buildTree(2, "parameter_list", ""),
@@ -258,8 +257,8 @@ func TestClassifyReordering_DependentSwap(t *testing.T) {
 
 	rhsBin2 := &Node{ID: 141, Kind: "binary_expression", Label: "+"}
 	rhsBin2.Children = []*Node{identNode(142, "x"), litNode(143, "1")}
-	s1R := assignStmtForBlock(130, ":=", []string{"y"}, rhsBin2)
-	s2R := assignStmtForBlock(110, ":=", []string{"x"}, litNode(120, "1"))
+	s1R := assignStmtForBlock(130, []string{"y"}, rhsBin2)
+	s2R := assignStmtForBlock(110, []string{"x"}, litNode(120, "1"))
 
 	rightFn := linkChildren(buildTree(101, "function_declaration", "f",
 		buildTree(102, "parameter_list", ""),
@@ -288,16 +287,16 @@ func TestClassifyReordering_DependentSwap(t *testing.T) {
 func TestClassifyReordering_WithSideEffects(t *testing.T) {
 	// Left: x := f(); y := 1
 	// Right: y := 1; x := f()
-	s1L := assignStmtForBlock(10, ":=", []string{"x"}, callNode(20, "f"))
-	s2L := assignStmtForBlock(30, ":=", []string{"y"}, litNode(40, "1"))
+	s1L := assignStmtForBlock(10, []string{"x"}, callNode(20, "f"))
+	s2L := assignStmtForBlock(30, []string{"y"}, litNode(40, "1"))
 
 	leftFn := linkChildren(buildTree(1, "function_declaration", "g",
 		buildTree(2, "parameter_list", ""),
 		&Node{ID: 3, Kind: "block", Children: []*Node{s1L, s2L}},
 	))
 
-	s1R := assignStmtForBlock(130, ":=", []string{"y"}, litNode(140, "1"))
-	s2R := assignStmtForBlock(110, ":=", []string{"x"}, callNode(120, "f"))
+	s1R := assignStmtForBlock(130, []string{"y"}, litNode(140, "1"))
+	s2R := assignStmtForBlock(110, []string{"x"}, callNode(120, "f"))
 
 	rightFn := linkChildren(buildTree(101, "function_declaration", "g",
 		buildTree(102, "parameter_list", ""),
@@ -325,15 +324,15 @@ func TestClassifyReordering_WithSideEffects(t *testing.T) {
 
 func TestClassifyReordering_NonGo(t *testing.T) {
 	// Same structure but language is "python" — should stay indeterminate.
-	s1L := assignStmtForBlock(10, ":=", []string{"x"}, litNode(20, "1"))
-	s2L := assignStmtForBlock(30, ":=", []string{"y"}, litNode(40, "2"))
+	s1L := assignStmtForBlock(10, []string{"x"}, litNode(20, "1"))
+	s2L := assignStmtForBlock(30, []string{"y"}, litNode(40, "2"))
 	leftFn := linkChildren(buildTree(1, "function_declaration", "f",
 		buildTree(2, "parameter_list", ""),
 		&Node{ID: 3, Kind: "block", Children: []*Node{s1L, s2L}},
 	))
 
-	s1R := assignStmtForBlock(130, ":=", []string{"y"}, litNode(140, "2"))
-	s2R := assignStmtForBlock(110, ":=", []string{"x"}, litNode(120, "1"))
+	s1R := assignStmtForBlock(130, []string{"y"}, litNode(140, "2"))
+	s2R := assignStmtForBlock(110, []string{"x"}, litNode(120, "1"))
 	rightFn := linkChildren(buildTree(101, "function_declaration", "f",
 		buildTree(102, "parameter_list", ""),
 		&Node{ID: 103, Kind: "block", Children: []*Node{s1R, s2R}},

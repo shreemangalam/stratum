@@ -58,15 +58,15 @@ func (s *SourceStore) Size() int {
 
 // Pool manages a bounded set of diff worker goroutines.
 type Pool struct {
-	store      store.Store
-	cache      *cache.Cache
-	registry   *parse.Registry
-	sources    *SourceStore
-	subscribers *Subscribers
-	workerCount int
+	store        store.Store
+	cache        *cache.Cache
+	registry     *parse.Registry
+	sources      *SourceStore
+	subscribers  *Subscribers
+	workerCount  int
 	pollInterval time.Duration
-	cancel     context.CancelFunc
-	wg         sync.WaitGroup
+	cancel       context.CancelFunc
+	wg           sync.WaitGroup
 }
 
 // NewPool creates a worker pool.
@@ -79,12 +79,12 @@ func NewPool(
 	subs *Subscribers,
 ) *Pool {
 	return &Pool{
-		store:       s,
-		cache:       c,
-		registry:    r,
-		sources:     sources,
-		subscribers: subs,
-		workerCount: workerCount,
+		store:        s,
+		cache:        c,
+		registry:     r,
+		sources:      sources,
+		subscribers:  subs,
+		workerCount:  workerCount,
 		pollInterval: 500 * time.Millisecond,
 	}
 }

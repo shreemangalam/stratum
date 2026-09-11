@@ -74,7 +74,8 @@ func (p *Parser) parseCPreprocessor(s *scanner, src []byte, line, col, off int) 
 	kind := "preprocessor"
 	label := "#" + directive
 
-	if directive == "include" {
+	switch directive {
+	case "include":
 		kind = "include_directive"
 		s.skipWhitespace()
 		start := s.pos
@@ -92,7 +93,7 @@ func (p *Parser) parseCPreprocessor(s *scanner, src []byte, line, col, off int) 
 			}
 			label = string(src[start:s.pos])
 		}
-	} else if directive == "define" {
+	case "define":
 		kind = "macro_definition"
 		s.skipWhitespace()
 		if isIdentStart(s.peek()) {

@@ -11,7 +11,7 @@ import (
 
 func TestCreateDiff_ClassifiesReorderedGoStatements(t *testing.T) {
 	env := setupTestEnv(t)
-	defer env.close()
+	defer env.close(t)
 
 	tests := []struct {
 		name        string
@@ -85,7 +85,7 @@ func createDiffAndWaitForSemantic(t *testing.T, baseURL, left, right string) (st
 	if err != nil {
 		t.Fatalf("create diff: %v", err)
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 		t.Fatalf("create diff status = %d, want 200 or 201", resp.StatusCode)
 	}
@@ -115,7 +115,7 @@ func createDiffAndWaitForSemantic(t *testing.T, baseURL, left, right string) (st
 			} `json:"result"`
 		}
 		decodeErr := json.NewDecoder(pollResp.Body).Decode(&result)
-		pollResp.Body.Close()
+		closeBody(t, pollResp.Body)
 		if decodeErr != nil {
 			t.Fatalf("decode diff result: %v", decodeErr)
 		}

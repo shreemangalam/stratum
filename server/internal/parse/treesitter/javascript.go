@@ -29,7 +29,7 @@ func (p *Parser) parseJavaScript(_ context.Context, source []byte) (*core.Tree, 
 			p.addChild(root, node)
 
 		case s.matchWord("function"):
-			node := p.parseJSFunction(s, source, startLine, startCol, startOff, false)
+			node := p.parseJSFunction(s, source, startLine, startCol, startOff)
 			p.addChild(root, node)
 
 		case s.matchWord("async") && p.jsLookaheadFunction(s):
@@ -87,7 +87,7 @@ func (p *Parser) parseJSExport(s *scanner, source []byte, line, col, off int) *c
 	}
 
 	if s.matchWord("function") {
-		inner := p.parseJSFunction(s, source, line, col, off, true)
+		inner := p.parseJSFunction(s, source, line, col, off)
 		inner.Kind = "export_function"
 		return inner
 	}
@@ -127,7 +127,7 @@ func (p *Parser) parseJSExport(s *scanner, source []byte, line, col, off int) *c
 	return p.makeNode("export_declaration", "", line, col, off)
 }
 
-func (p *Parser) parseJSFunction(s *scanner, _ []byte, line, col, off int, isExport bool) *core.Node {
+func (p *Parser) parseJSFunction(s *scanner, _ []byte, line, col, off int) *core.Node {
 	s.pos += 8 // "function"
 	s.col += 8
 	if !s.eof() && s.peek() == '*' {
@@ -168,7 +168,7 @@ func (p *Parser) parseJSAsyncFunction(s *scanner, source []byte, line, col, off 
 	s.pos += 5 // "async"
 	s.col += 5
 	s.skipWhitespaceAndComments()
-	node := p.parseJSFunction(s, source, line, col, off, false)
+	node := p.parseJSFunction(s, source, line, col, off)
 	return node
 }
 
@@ -438,7 +438,7 @@ func (p *Parser) jsSkipStatement(s *scanner) {
 			s.advance()
 			s.skipBalanced('{', '}')
 			return
-		case ch == '(' :
+		case ch == '(':
 			s.advance()
 			s.skipBalanced('(', ')')
 		case ch == '\'' || ch == '"':
