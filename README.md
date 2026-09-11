@@ -1,8 +1,9 @@
 # Stratum
 
-Structural diff and merge tool. Parses source files into ASTs, matches
-nodes across versions, and produces an edit script that names moves,
-renames, and semantic changes rather than line changes.
+Structural diff, merge, and cross-file analysis tool. Parses source
+files into ASTs, matches nodes across versions, and produces edit
+scripts that name moves, renames, and semantic changes rather than
+line changes.
 
 ## What it does
 
@@ -11,8 +12,18 @@ happened*: a function moved, a variable was renamed, a condition was
 inverted. It parses both versions of a file into syntax trees, matches
 nodes across them, and generates an edit script of structural operations.
 
-A web UI renders the result as a side-by-side view with move arrows and
-collapsible unchanged regions.
+Beyond single-file diffs, Stratum provides:
+
+- **Three-way merge planning** -- given a common ancestor and two
+  branches, produces a per-node merge plan with structural conflict
+  classification (modify-modify, delete-modify, rename-rename, add-add).
+- **Cross-file move detection** -- when analyzing a git changeset,
+  correlates deleted nodes in one file with inserted nodes in another to
+  detect cross-file moves, renames, and rename-moves.
+
+A web UI renders diffs as side-by-side views with move arrows and
+collapsible unchanged regions, merge plans as decision tables, and
+changeset analysis with cross-file relationship badges.
 
 ## How it works
 
@@ -26,8 +37,14 @@ collapsible unchanged regions.
    subtrees, and residual optimal alignment for small ambiguous regions.
 3. **Generate** an edit script classifying each change as an insert,
    delete, move, rename, update, or alignment change.
-4. **Render** the diff in a web UI with scroll-synced panes, syntax
-   highlighting, diff annotations, and SVG move arrows.
+4. **Merge** (three-way): match base-to-left and base-to-right, then
+   iterate structural units to produce per-node merge decisions.
+5. **Cross-file analysis**: collect deleted and inserted nodes across
+   all files in a changeset, match by content hash (exact moves),
+   label+similarity (edited moves), and kind+similarity (rename-moves).
+6. **Render** in the web UI with scroll-synced panes, syntax highlighting,
+   diff annotations, SVG move arrows, merge decision tables, and
+   cross-file relationship panels.
 
 When the optimal-alignment cost estimate exceeds a configurable budget,
 Stratum leaves the remaining nodes as insertions/deletions and marks the
@@ -140,19 +157,25 @@ back to line-by-line comparison with trivial-line filtering.
   Keep `GIT_ENABLED=false` on a public deployment; the API routes and frontend
   tab are disabled in that configuration.
 
-### v2 (current)
+### v2
 
 Function-level semantic verdicts classify changes as behavior-preserving,
 behavior-changing, or indeterminate. For Go, lightweight def/use analysis
 distinguishes independent from dependent direct statement reorderings.
 Calls, control flow, nested reordering, and blocks over 50 statements stay
-indeterminate. Remaining v2 work is a labeled public benchmark with
-precision/recall and a published case study.
+indeterminate.
 
-### v3
+### v3 (current)
 
-Three-way merge with structural conflict resolution. Cross-file rename
-and refactor detection. Additional language plugins driven by demand.
+Three-way structural merge planning with per-node conflict classification.
+Cross-file rename and move detection across git changesets, using content
+hashing for exact moves and line-set Jaccard similarity for edited moves
+and rename-moves.
+
+### Remaining
+
+Labeled public benchmark with precision/recall for move detection.
+Additional language plugins driven by demand.
 
 ## License
 

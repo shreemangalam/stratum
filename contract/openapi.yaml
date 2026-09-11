@@ -182,6 +182,71 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /api/v1/merges:
+    post:
+      operationId: createMerge
+      summary: Plan a three-way structural merge
+      description: |
+        Submit base, left, and right source texts for three-way structural
+        merge planning. Returns a deterministic merge plan with per-node
+        decisions and conflict classification. The operation is synchronous
+        because the planner is pure computation with no I/O.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMergeRequest"
+      responses:
+        "200":
+          description: Merge plan computed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MergeResponse"
+        "400":
+          description: Invalid input.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Request body too large (max 1 MB).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /api/v1/changesets:
+    post:
+      operationId: createChangeset
+      summary: Analyze a git changeset with cross-file detection
+      description: |
+        Diff all changed files between two git refs and detect cross-file
+        moves and renames. For each changed file the server extracts both
+        versions, parses them, and generates an edit script. A post-processing
+        pass then correlates deleted nodes in one file with inserted nodes in
+        another to surface cross-file relationships.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateChangesetRequest"
+      responses:
+        "200":
+          description: Changeset analysis complete.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ChangesetResponse"
+        "400":
+          description: Invalid input or git error.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /api/v1/diffs/{id}/stream:
     get:
       operationId: streamDiff
@@ -540,6 +605,177 @@ components:
             - modified
             - renamed
           description: Git change status.
+
+    CreateMergeRequest:
+      type: object
+      required:
+        - base
+        - left
+        - right
+      properties:
+        base:
+          $ref: "#/components/schemas/DiffInput"
+        left:
+          $ref: "#/components/schemas/DiffInput"
+        right:
+          $ref: "#/components/schemas/DiffInput"
+        language:
+          type: string
+          description: >
+            Language hint. If omitted, detected from filename extensions.
+
+    MergeResponse:
+      type: object
+      required:
+        - language
+        - plan
+      properties:
+        language:
+          type: string
+        plan:
+          $ref: "#/components/schemas/MergePlan"
+        base_source:
+          type: string
+        left_source:
+          type: string
+        right_source:
+          type: string
+
+    MergePlan:
+      type: object
+      required:
+        - entries
+        - conflict_count
+        - has_conflicts
+      properties:
+        entries:
+          type: array
+          items:
+            $ref: "#/components/schemas/MergeEntry"
+        conflict_count:
+          type: integer
+        has_conflicts:
+          type: boolean
+
+    MergeEntry:
+      type: object
+      required:
+        - decision
+        - reason
+      properties:
+        base_node:
+          $ref: "#/components/schemas/NodeRef"
+        left_node:
+          $ref: "#/components/schemas/NodeRef"
+        right_node:
+          $ref: "#/components/schemas/NodeRef"
+        decision:
+          type: string
+          enum:
+            - unchanged
+            - take-left
+            - take-right
+            - take-either
+            - delete
+            - conflict
+        conflict_kind:
+          type: string
+          enum:
+            - modify-modify
+            - delete-modify
+            - rename-rename
+            - add-add
+        reason:
+          type: string
+
+    CreateChangesetRequest:
+      type: object
+      required:
+        - repo_path
+        - left_ref
+        - right_ref
+      properties:
+        repo_path:
+          type: string
+          description: Absolute path to a local git repository.
+        left_ref:
+          type: string
+          description: Base git ref.
+        right_ref:
+          type: string
+          description: Target git ref.
+
+    ChangesetResponse:
+      type: object
+      required:
+        - files
+        - cross_file_matches
+      properties:
+        files:
+          type: array
+          items:
+            $ref: "#/components/schemas/FileResult"
+        cross_file_matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/CrossFileMatch"
+
+    FileResult:
+      type: object
+      required:
+        - path
+        - status
+        - language
+      properties:
+        path:
+          type: string
+          description: File path relative to repository root.
+        status:
+          type: string
+          enum:
+            - added
+            - deleted
+            - modified
+            - renamed
+          description: Git change status.
+        language:
+          type: string
+          description: Language used for parsing.
+        edit_script:
+          $ref: "#/components/schemas/EditScript"
+
+    CrossFileMatch:
+      type: object
+      required:
+        - kind
+        - score
+        - source_file
+        - target_file
+        - source_node
+        - target_node
+      properties:
+        kind:
+          type: string
+          enum:
+            - move
+            - rename-move
+          description: >
+            Type of cross-file relationship. "move" means a structurally
+            identical or similar node moved between files. "rename-move"
+            means it was also renamed.
+        score:
+          type: number
+          description: Similarity score between 0 and 1.
+        source_file:
+          type: string
+          description: File the node was deleted from.
+        target_file:
+          type: string
+          description: File the node was inserted into.
+        source_node:
+          $ref: "#/components/schemas/NodeRef"
+        target_node:
+          $ref: "#/components/schemas/NodeRef"
 
     ErrorResponse:
       type: object

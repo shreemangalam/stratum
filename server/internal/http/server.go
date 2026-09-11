@@ -63,15 +63,18 @@ func NewServer(
 	srv.mux.HandleFunc("GET /api/v1/health", srv.handleHealth)
 	srv.mux.HandleFunc("GET /api/v1/languages", srv.handleLanguages)
 	srv.mux.HandleFunc("POST /api/v1/diffs", srv.handleCreateDiff)
+	srv.mux.HandleFunc("POST /api/v1/merges", srv.handleCreateMerge)
 	if config.GitEnabled {
 		srv.mux.HandleFunc("POST /api/v1/diffs/git", srv.handleGitDiff)
 		srv.mux.HandleFunc("POST /api/v1/git/files", srv.handleGitFiles)
+		srv.mux.HandleFunc("POST /api/v1/changesets", srv.handleCreateChangeset)
 	} else {
 		notFound := func(w http.ResponseWriter, _ *http.Request) {
 			http.NotFound(w, nil)
 		}
 		srv.mux.HandleFunc("POST /api/v1/diffs/git", notFound)
 		srv.mux.HandleFunc("POST /api/v1/git/files", notFound)
+		srv.mux.HandleFunc("POST /api/v1/changesets", notFound)
 	}
 	srv.mux.HandleFunc("GET /api/v1/diffs/{id}", srv.handleGetDiff)
 	srv.mux.HandleFunc("GET /api/v1/diffs/{id}/stream", srv.handleStreamDiff)

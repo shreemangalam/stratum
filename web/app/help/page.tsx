@@ -443,21 +443,37 @@ export default function HelpPage() {
 					</div>
 				</dl>
 				<p className="help-text" style={{ marginTop: 16, marginBottom: 12 }}>
-					<strong>v3</strong> - Structural merge
+					<strong>v3 (current)</strong> - Structural merge and cross-file analysis
 				</p>
 				<dl className="help-verdicts">
 					<div className="help-verdict-row">
 						<dt className="help-verdict-term">Three-way merge</dt>
 						<dd className="help-verdict-desc">
-							Merge two branches against a common ancestor at the structural level. Conflicts are
-							structural (both sides modified the same function) rather than line-based.
+							Implemented. The Merge tab accepts a base, left, and right source and produces a
+							per-node merge plan with structural conflict classification: modify-modify,
+							delete-modify, rename-rename, and add-add. Each structural unit shows a verdict and
+							the chosen resolution.
 						</dd>
 					</div>
 					<div className="help-verdict-row">
 						<dt className="help-verdict-term">Cross-file detection</dt>
 						<dd className="help-verdict-desc">
-							Detect when a function moved from one file to another, or when a rename propagated
-							across multiple files in a commit.
+							Implemented. In the Git diff tab, &quot;Analyze changeset&quot; diffs all changed
+							files between two refs and detects cross-file moves and rename-moves. Uses content
+							hashing for exact moves and line-set Jaccard similarity for edited moves (threshold
+							0.6) and rename-moves (threshold 0.75).
+						</dd>
+					</div>
+				</dl>
+				<p className="help-text" style={{ marginTop: 16, marginBottom: 12 }}>
+					<strong>Remaining</strong>
+				</p>
+				<dl className="help-verdicts">
+					<div className="help-verdict-row">
+						<dt className="help-verdict-term">Public benchmark</dt>
+						<dd className="help-verdict-desc">
+							A labeled corpus from real open-source history with published move-detection
+							precision, recall, methodology, and reproducible results.
 						</dd>
 					</div>
 					<div className="help-verdict-row">

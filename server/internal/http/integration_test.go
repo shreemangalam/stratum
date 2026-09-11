@@ -7,7 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -617,6 +619,100 @@ func TestStaleJobRecovery(t *testing.T) {
 	}
 }
 
+func TestRecoveredJob_CompletesFromPersistedSource(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	payload := `{
+		"left": {"content": "package main\n\nfunc before() {\n\treturn 1\n}\n"},
+		"right": {"content": "package main\n\nfunc after() {\n\treturn 2\n}\n"},
+		"language": "go"
+	}`
+
+	resp, err := http.Post(env.server.URL+"/api/v1/diffs", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("create diff: %v", err)
+	}
+	var job struct {
+		ID string `json:"id"`
+	}
+	decodeJSON(t, resp.Body, &job)
+	closeBody(t, resp.Body)
+
+	deadline := time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		pollResp, err := http.Get(fmt.Sprintf("%s/api/v1/diffs/%s", env.server.URL, job.ID))
+		if err != nil {
+			t.Fatalf("polling: %v", err)
+		}
+		var s struct {
+			Status string `json:"status"`
+		}
+		decodeJSON(t, pollResp.Body, &s)
+		closeBody(t, pollResp.Body)
+		if s.Status == "completed" {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	env.pool.Stop()
+
+	_, err = env.db.Exec(context.Background(),
+		"UPDATE jobs SET status = 'pending', result = NULL, updated_at = now() WHERE id = $1", job.ID)
+	if err != nil {
+		t.Fatalf("resetting job to pending: %v", err)
+	}
+
+	freshSources := jobs.NewSourceStore()
+	freshCache := cache.New(time.Hour)
+
+	registry := parse.NewRegistry()
+	registry.Register(treesitter.NewGo())
+
+	workerCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	freshPool := jobs.NewPool(1, env.db, freshCache, registry, freshSources, jobs.NewSubscribers())
+	freshPool.Start(workerCtx)
+	defer freshPool.Stop()
+
+	var result struct {
+		Status string          `json:"status"`
+		Result json.RawMessage `json:"result"`
+		Error  string          `json:"error"`
+	}
+	deadline = time.Now().Add(15 * time.Second)
+	for time.Now().Before(deadline) {
+		pollResp, err := http.Get(fmt.Sprintf("%s/api/v1/diffs/%s", env.server.URL, job.ID))
+		if err != nil {
+			t.Fatalf("polling: %v", err)
+		}
+		decodeJSON(t, pollResp.Body, &result)
+		closeBody(t, pollResp.Body)
+		if result.Status == "completed" || result.Status == "failed" {
+			break
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+
+	if result.Status != "completed" {
+		t.Fatalf("recovered job should complete, got status=%q error=%q", result.Status, result.Error)
+	}
+	if result.Result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	var es struct {
+		Operations []struct {
+			Kind string `json:"kind"`
+		} `json:"operations"`
+	}
+	unmarshalJSON(t, result.Result, &es)
+	if len(es.Operations) == 0 {
+		t.Error("expected operations from recovered job")
+	}
+}
+
 func TestCreateDiff_JavaScriptParsesAndCompletes(t *testing.T) {
 	env := setupTestEnv(t)
 	defer env.close(t)
@@ -872,5 +968,475 @@ func TestCORS_Preflight(t *testing.T) {
 	}
 	if got := resp.Header.Get("Access-Control-Allow-Origin"); got != "*" {
 		t.Errorf("expected CORS header *, got %q", got)
+	}
+}
+
+// --- Merge endpoint tests ---
+
+func TestCreateMerge_AutoResolved(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	base := "package main\n\nfunc greet() string {\n\treturn \"hello\"\n}\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n"
+	left := "package main\n\nfunc greet() string {\n\treturn \"hi\"\n}\n\nfunc add(a, b int) int {\n\treturn a + b\n}\n"
+	right := "package main\n\nfunc greet() string {\n\treturn \"hello\"\n}\n\nfunc add(a, b int) int {\n\treturn a + b + 1\n}\n"
+
+	payload := fmt.Sprintf(`{
+		"base": {"content": %q},
+		"left": {"content": %q},
+		"right": {"content": %q},
+		"language": "go"
+	}`, base, left, right)
+
+	resp, err := http.Post(env.server.URL+"/api/v1/merges", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("create merge: %v", err)
+	}
+	defer closeBody(t, resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Language string `json:"language"`
+		Plan     struct {
+			Entries       []json.RawMessage `json:"entries"`
+			ConflictCount int               `json:"conflict_count"`
+			HasConflicts  bool              `json:"has_conflicts"`
+		} `json:"plan"`
+	}
+	decodeJSON(t, resp.Body, &result)
+
+	if result.Language != "go" {
+		t.Errorf("expected language go, got %q", result.Language)
+	}
+	if result.Plan.HasConflicts {
+		t.Error("expected no conflicts for non-overlapping changes")
+	}
+	if len(result.Plan.Entries) == 0 {
+		t.Error("expected merge entries")
+	}
+}
+
+func TestCreateMerge_WithConflict(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	base := "package main\n\nfunc greet() string {\n\treturn \"hello\"\n}\n"
+	left := "package main\n\nfunc greet() string {\n\treturn \"hi\"\n}\n"
+	right := "package main\n\nfunc greet() string {\n\treturn \"hey\"\n}\n"
+
+	payload := fmt.Sprintf(`{
+		"base": {"content": %q},
+		"left": {"content": %q},
+		"right": {"content": %q},
+		"language": "go"
+	}`, base, left, right)
+
+	resp, err := http.Post(env.server.URL+"/api/v1/merges", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("create merge: %v", err)
+	}
+	defer closeBody(t, resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Plan struct {
+			Entries []struct {
+				Decision     string  `json:"decision"`
+				ConflictKind *string `json:"conflict_kind"`
+			} `json:"entries"`
+			ConflictCount int  `json:"conflict_count"`
+			HasConflicts  bool `json:"has_conflicts"`
+		} `json:"plan"`
+	}
+	decodeJSON(t, resp.Body, &result)
+
+	if !result.Plan.HasConflicts {
+		t.Error("expected conflicts for modify-modify")
+	}
+	if result.Plan.ConflictCount < 1 {
+		t.Errorf("expected at least 1 conflict, got %d", result.Plan.ConflictCount)
+	}
+
+	hasConflictEntry := false
+	for _, e := range result.Plan.Entries {
+		if e.Decision == "conflict" && e.ConflictKind != nil && *e.ConflictKind == "modify-modify" {
+			hasConflictEntry = true
+		}
+	}
+	if !hasConflictEntry {
+		t.Error("expected a modify-modify conflict entry")
+	}
+}
+
+func TestCreateMerge_DeleteModifyConflict(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	base := "package main\n\nfunc removed() int {\n\treturn 1\n}\n\nfunc kept() int {\n\treturn 2\n}\n"
+	left := "package main\n\nfunc kept() int {\n\treturn 2\n}\n"
+	right := "package main\n\nfunc removed() int {\n\treturn 99\n}\n\nfunc kept() int {\n\treturn 2\n}\n"
+
+	payload := fmt.Sprintf(`{
+		"base": {"content": %q},
+		"left": {"content": %q},
+		"right": {"content": %q},
+		"language": "go"
+	}`, base, left, right)
+
+	resp, err := http.Post(env.server.URL+"/api/v1/merges", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeBody(t, resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Plan struct {
+			Entries []struct {
+				Decision     string  `json:"decision"`
+				ConflictKind *string `json:"conflict_kind"`
+			} `json:"entries"`
+			HasConflicts bool `json:"has_conflicts"`
+		} `json:"plan"`
+	}
+	decodeJSON(t, resp.Body, &result)
+
+	if !result.Plan.HasConflicts {
+		t.Error("expected delete-modify conflict")
+	}
+
+	hasDeleteModify := false
+	for _, e := range result.Plan.Entries {
+		if e.ConflictKind != nil && *e.ConflictKind == "delete-modify" {
+			hasDeleteModify = true
+		}
+	}
+	if !hasDeleteModify {
+		t.Error("expected a delete-modify conflict entry")
+	}
+}
+
+func TestCreateMerge_IncludesSources(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	base := "package main\n\nfunc f() {}\n"
+	left := "package main\n\nfunc g() {}\n"
+	right := "package main\n\nfunc h() {}\n"
+
+	payload := fmt.Sprintf(`{
+		"base": {"content": %q},
+		"left": {"content": %q},
+		"right": {"content": %q},
+		"language": "go"
+	}`, base, left, right)
+
+	resp, err := http.Post(env.server.URL+"/api/v1/merges", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeBody(t, resp.Body)
+
+	var result struct {
+		BaseSource  *string `json:"base_source"`
+		LeftSource  *string `json:"left_source"`
+		RightSource *string `json:"right_source"`
+	}
+	decodeJSON(t, resp.Body, &result)
+
+	if result.BaseSource == nil || *result.BaseSource != base {
+		t.Error("expected base_source in response")
+	}
+	if result.LeftSource == nil || *result.LeftSource != left {
+		t.Error("expected left_source in response")
+	}
+	if result.RightSource == nil || *result.RightSource != right {
+		t.Error("expected right_source in response")
+	}
+}
+
+func TestCreateMerge_ValidationErrors(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{"missing base", `{"left":{"content":"x"},"right":{"content":"y"},"language":"go"}`},
+		{"missing left", `{"base":{"content":"x"},"right":{"content":"y"},"language":"go"}`},
+		{"missing right", `{"base":{"content":"x"},"left":{"content":"y"},"language":"go"}`},
+		{"invalid json", `not json`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := http.Post(env.server.URL+"/api/v1/merges", "application/json",
+				strings.NewReader(tt.payload))
+			if err != nil {
+				t.Fatal(err)
+			}
+			closeBody(t, resp.Body)
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d", resp.StatusCode)
+			}
+		})
+	}
+}
+
+// --- Changeset endpoint tests ---
+
+func initGitRepo(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init")
+	run("config", "user.name", "test")
+	run("config", "user.email", "test@test.com")
+	return dir
+}
+
+func writeFile(t *testing.T, dir, name, content string) {
+	t.Helper()
+	path := filepath.Join(dir, name)
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func gitCommit(t *testing.T, dir, msg string) {
+	t.Helper()
+	run := func(args ...string) {
+		t.Helper()
+		cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=test", "GIT_AUTHOR_EMAIL=test@test.com",
+			"GIT_COMMITTER_NAME=test", "GIT_COMMITTER_EMAIL=test@test.com",
+		)
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("add", "-A")
+	run("commit", "-m", msg)
+}
+
+func TestCreateChangeset_CrossFileMove(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	dir := initGitRepo(t)
+
+	writeFile(t, dir, "utils.go", "package main\n\nfunc helper(x int) int {\n\ty := x * 2\n\tz := y + 1\n\treturn z\n}\n\nfunc other() {}\n")
+	gitCommit(t, dir, "initial")
+
+	writeFile(t, dir, "utils.go", "package main\n\nfunc other() {}\n")
+	writeFile(t, dir, "helpers.go", "package main\n\nfunc helper(x int) int {\n\ty := x * 2\n\tz := y + 1\n\treturn z\n}\n")
+	gitCommit(t, dir, "move helper to helpers.go")
+
+	payload := fmt.Sprintf(`{
+		"repo_path": %q,
+		"left_ref": "HEAD~1",
+		"right_ref": "HEAD"
+	}`, dir)
+
+	resp, err := http.Post(env.server.URL+"/api/v1/changesets", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeBody(t, resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		Files []struct {
+			Path   string `json:"path"`
+			Status string `json:"status"`
+		} `json:"files"`
+		CrossFileMatches []struct {
+			Kind       string  `json:"kind"`
+			Score      float64 `json:"score"`
+			SourceFile string  `json:"source_file"`
+			TargetFile string  `json:"target_file"`
+			SourceNode struct {
+				Label string `json:"label"`
+			} `json:"source_node"`
+			TargetNode struct {
+				Label string `json:"label"`
+			} `json:"target_node"`
+		} `json:"cross_file_matches"`
+	}
+	decodeJSON(t, resp.Body, &result)
+
+	if len(result.Files) < 2 {
+		t.Fatalf("expected at least 2 files, got %d", len(result.Files))
+	}
+
+	if len(result.CrossFileMatches) != 1 {
+		t.Fatalf("expected 1 cross-file match, got %d", len(result.CrossFileMatches))
+	}
+
+	m := result.CrossFileMatches[0]
+	if m.Kind != "move" {
+		t.Errorf("expected move, got %q", m.Kind)
+	}
+	if m.Score != 1.0 {
+		t.Errorf("expected exact match score 1.0, got %f", m.Score)
+	}
+	if m.SourceNode.Label != "helper" || m.TargetNode.Label != "helper" {
+		t.Errorf("expected helper -> helper, got %q -> %q", m.SourceNode.Label, m.TargetNode.Label)
+	}
+}
+
+func TestCreateChangeset_RenameMove(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	dir := initGitRepo(t)
+
+	writeFile(t, dir, "old.go", "package main\n\nfunc oldName(a, b int) int {\n\tx := a * 2\n\ty := b * 3\n\tresult := x + y\n\tif result < 0 {\n\t\treturn 0\n\t}\n\treturn result\n}\n\nfunc unrelatedOld() string {\n\treturn \"this function exists only in old.go\"\n}\n")
+	gitCommit(t, dir, "initial")
+
+	if err := os.Remove(filepath.Join(dir, "old.go")); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, dir, "new.go", "package main\n\nfunc newName(a, b int) int {\n\tx := a * 2\n\ty := b * 3\n\tresult := x + y\n\tif result < 0 {\n\t\treturn 0\n\t}\n\treturn result\n}\n\nfunc unrelatedNew() string {\n\treturn \"this function exists only in new.go and is completely different\"\n}\n")
+	gitCommit(t, dir, "delete old, add new with renamed func")
+
+	payload := fmt.Sprintf(`{
+		"repo_path": %q,
+		"left_ref": "HEAD~1",
+		"right_ref": "HEAD"
+	}`, dir)
+
+	resp, err := http.Post(env.server.URL+"/api/v1/changesets", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeBody(t, resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		t.Fatalf("expected 200, got %d: %s", resp.StatusCode, body)
+	}
+
+	var result struct {
+		CrossFileMatches []struct {
+			Kind       string `json:"kind"`
+			SourceNode struct {
+				Label string `json:"label"`
+			} `json:"source_node"`
+			TargetNode struct {
+				Label string `json:"label"`
+			} `json:"target_node"`
+		} `json:"cross_file_matches"`
+	}
+	decodeJSON(t, resp.Body, &result)
+
+	hasRenameMove := false
+	for _, m := range result.CrossFileMatches {
+		if m.Kind == "rename-move" && m.SourceNode.Label == "oldName" && m.TargetNode.Label == "newName" {
+			hasRenameMove = true
+		}
+	}
+	if !hasRenameMove {
+		t.Errorf("expected a rename-move match oldName -> newName, got %d matches: %+v",
+			len(result.CrossFileMatches), result.CrossFileMatches)
+	}
+}
+
+func TestCreateChangeset_NoMatches(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	dir := initGitRepo(t)
+
+	writeFile(t, dir, "a.go", "package main\n\nfunc alpha() {}\n")
+	gitCommit(t, dir, "initial")
+
+	writeFile(t, dir, "a.go", "package main\n\nfunc alpha() { println(1) }\n")
+	gitCommit(t, dir, "modify in place")
+
+	payload := fmt.Sprintf(`{
+		"repo_path": %q,
+		"left_ref": "HEAD~1",
+		"right_ref": "HEAD"
+	}`, dir)
+
+	resp, err := http.Post(env.server.URL+"/api/v1/changesets", "application/json", strings.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeBody(t, resp.Body)
+
+	var result struct {
+		Files            []json.RawMessage `json:"files"`
+		CrossFileMatches []json.RawMessage `json:"cross_file_matches"`
+	}
+	decodeJSON(t, resp.Body, &result)
+
+	if len(result.Files) == 0 {
+		t.Error("expected at least 1 file result")
+	}
+	if len(result.CrossFileMatches) != 0 {
+		t.Errorf("expected 0 cross-file matches for in-place edit, got %d", len(result.CrossFileMatches))
+	}
+}
+
+func TestCreateChangeset_ValidationErrors(t *testing.T) {
+	env := setupTestEnv(t)
+	defer env.close(t)
+
+	tests := []struct {
+		name    string
+		payload string
+	}{
+		{"missing repo_path", `{"left_ref":"HEAD~1","right_ref":"HEAD"}`},
+		{"missing left_ref", `{"repo_path":"/tmp","right_ref":"HEAD"}`},
+		{"invalid json", `not json`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := http.Post(env.server.URL+"/api/v1/changesets", "application/json",
+				strings.NewReader(tt.payload))
+			if err != nil {
+				t.Fatal(err)
+			}
+			closeBody(t, resp.Body)
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Errorf("expected 400, got %d", resp.StatusCode)
+			}
+		})
 	}
 }

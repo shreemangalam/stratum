@@ -1,6 +1,10 @@
 # Private notes — never commit
 docs/private/
 
+# Assistant tooling
+.claude/
+.codex/
+
 # Environment
 .env
 .env.local

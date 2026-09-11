@@ -143,6 +143,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/merges": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan a three-way structural merge
+         * @description Submit base, left, and right source texts for three-way structural
+         *     merge planning. Returns a deterministic merge plan with per-node
+         *     decisions and conflict classification. The operation is synchronous
+         *     because the planner is pure computation with no I/O.
+         */
+        post: operations["createMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/changesets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Analyze a git changeset with cross-file detection
+         * @description Diff all changed files between two git refs and detect cross-file
+         *     moves and renames. For each changed file the server extracts both
+         *     versions, parses them, and generates an edit script. A post-processing
+         *     pass then correlates deleted nodes in one file with inserted nodes in
+         *     another to surface cross-file relationships.
+         */
+        post: operations["createChangeset"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/diffs/{id}/stream": {
         parameters: {
             query?: never;
@@ -288,6 +335,74 @@ export interface components {
              * @enum {string}
              */
             status: "added" | "deleted" | "modified" | "renamed";
+        };
+        CreateMergeRequest: {
+            base: components["schemas"]["DiffInput"];
+            left: components["schemas"]["DiffInput"];
+            right: components["schemas"]["DiffInput"];
+            /** @description Language hint. If omitted, detected from filename extensions. */
+            language?: string;
+        };
+        MergeResponse: {
+            language: string;
+            plan: components["schemas"]["MergePlan"];
+            base_source?: string;
+            left_source?: string;
+            right_source?: string;
+        };
+        MergePlan: {
+            entries: components["schemas"]["MergeEntry"][];
+            conflict_count: number;
+            has_conflicts: boolean;
+        };
+        MergeEntry: {
+            base_node?: components["schemas"]["NodeRef"];
+            left_node?: components["schemas"]["NodeRef"];
+            right_node?: components["schemas"]["NodeRef"];
+            /** @enum {string} */
+            decision: "unchanged" | "take-left" | "take-right" | "take-either" | "delete" | "conflict";
+            /** @enum {string} */
+            conflict_kind?: "modify-modify" | "delete-modify" | "rename-rename" | "add-add";
+            reason: string;
+        };
+        CreateChangesetRequest: {
+            /** @description Absolute path to a local git repository. */
+            repo_path: string;
+            /** @description Base git ref. */
+            left_ref: string;
+            /** @description Target git ref. */
+            right_ref: string;
+        };
+        ChangesetResponse: {
+            files: components["schemas"]["FileResult"][];
+            cross_file_matches: components["schemas"]["CrossFileMatch"][];
+        };
+        FileResult: {
+            /** @description File path relative to repository root. */
+            path: string;
+            /**
+             * @description Git change status.
+             * @enum {string}
+             */
+            status: "added" | "deleted" | "modified" | "renamed";
+            /** @description Language used for parsing. */
+            language: string;
+            edit_script?: components["schemas"]["EditScript"];
+        };
+        CrossFileMatch: {
+            /**
+             * @description Type of cross-file relationship. "move" means a structurally identical or similar node moved between files. "rename-move" means it was also renamed.
+             * @enum {string}
+             */
+            kind: "move" | "rename-move";
+            /** @description Similarity score between 0 and 1. */
+            score: number;
+            /** @description File the node was deleted from. */
+            source_file: string;
+            /** @description File the node was inserted into. */
+            target_file: string;
+            source_node: components["schemas"]["NodeRef"];
+            target_node: components["schemas"]["NodeRef"];
         };
         ErrorResponse: {
             error: string;
@@ -514,6 +629,81 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GitFilesResponse"];
+                };
+            };
+            /** @description Invalid input or git error. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Merge plan computed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MergeResponse"];
+                };
+            };
+            /** @description Invalid input. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request body too large (max 1 MB). */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    createChangeset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateChangesetRequest"];
+            };
+        };
+        responses: {
+            /** @description Changeset analysis complete. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangesetResponse"];
                 };
             };
             /** @description Invalid input or git error. */

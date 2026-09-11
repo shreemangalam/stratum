@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { DiffForm } from "@/components/diff-form";
 import { GitDiffForm } from "@/components/git-diff-form";
+import { MergeForm } from "@/components/merge-form";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080";
 const GIT_ENABLED =
@@ -10,7 +11,7 @@ const GIT_ENABLED =
 	(process.env.NODE_ENV === "development" && process.env.NEXT_PUBLIC_GIT_ENABLED !== "false");
 
 export default function Home() {
-	const [tab, setTab] = useState<"paste" | "git">("paste");
+	const [tab, setTab] = useState<"paste" | "git" | "merge">("paste");
 	const [apiStatus, setApiStatus] = useState<"checking" | "ok" | "unreachable">("checking");
 
 	useEffect(() => {
@@ -56,6 +57,13 @@ export default function Home() {
 				>
 					Paste code
 				</button>
+				<button
+					type="button"
+					className={`tab-btn${tab === "merge" ? " active" : ""}`}
+					onClick={() => setTab("merge")}
+				>
+					Merge
+				</button>
 				{GIT_ENABLED && (
 					<button
 						type="button"
@@ -66,7 +74,9 @@ export default function Home() {
 					</button>
 				)}
 			</div>
-			{tab === "paste" ? <DiffForm /> : <GitDiffForm />}
+			{tab === "paste" && <DiffForm />}
+			{tab === "merge" && <MergeForm />}
+			{tab === "git" && <GitDiffForm />}
 		</div>
 	);
 }
