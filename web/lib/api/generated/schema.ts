@@ -349,6 +349,8 @@ export interface components {
             base_source?: string;
             left_source?: string;
             right_source?: string;
+            /** @description Synthesized merged file content. Auto-resolved entries emit the chosen side's source text; conflicts emit git-style conflict markers (<<<<<<< left / ======= / >>>>>>> right). */
+            merged_source?: string;
         };
         MergePlan: {
             entries: components["schemas"]["MergeEntry"][];

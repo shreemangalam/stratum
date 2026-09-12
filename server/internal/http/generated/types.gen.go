@@ -472,11 +472,14 @@ type MergePlan struct {
 
 // MergeResponse defines model for MergeResponse.
 type MergeResponse struct {
-	BaseSource  *string   `json:"base_source,omitempty"`
-	Language    string    `json:"language"`
-	LeftSource  *string   `json:"left_source,omitempty"`
-	Plan        MergePlan `json:"plan"`
-	RightSource *string   `json:"right_source,omitempty"`
+	BaseSource *string `json:"base_source,omitempty"`
+	Language   string  `json:"language"`
+	LeftSource *string `json:"left_source,omitempty"`
+
+	// MergedSource Synthesized merged file content. Auto-resolved entries emit the chosen side's source text; conflicts emit git-style conflict markers (<<<<<<< left / ======= / >>>>>>> right).
+	MergedSource *string   `json:"merged_source,omitempty"`
+	Plan         MergePlan `json:"plan"`
+	RightSource  *string   `json:"right_source,omitempty"`
 }
 
 // NodeRef defines model for NodeRef.

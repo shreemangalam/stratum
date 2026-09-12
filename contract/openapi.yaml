@@ -640,6 +640,12 @@ components:
           type: string
         right_source:
           type: string
+        merged_source:
+          type: string
+          description: >-
+            Synthesized merged file content. Auto-resolved entries emit
+            the chosen side's source text; conflicts emit git-style
+            conflict markers (<<<<<<< left / ======= / >>>>>>> right).
 
     MergePlan:
       type: object
