@@ -21,6 +21,8 @@ renamed to `CheckInput` with a body edit, a struct field inserted, and
 semantic verdicts classifying each change as behavior-preserving or
 behavior-changing.
 
+> [Watch the structural diff workflow (WebM)](docs/screenshots/structural-diff-demo.webm)
+
 Beyond single-file diffs, Stratum provides:
 
 - **Three-way merge** -- given a common ancestor and two
@@ -38,13 +40,26 @@ Beyond single-file diffs, Stratum provides:
 The merge view shows per-node decisions: which side's changes are taken,
 which conflict, and the synthesized merged output with conflict markers.
 
+> [Watch the merge workflow (WebM)](docs/screenshots/merge-demo.webm)
+
 ### Git changeset with cross-file detection
+
+![Git diff form](docs/screenshots/03-git-diff.png)
+
+Point at a local git repository and two refs.  Stratum lists changed files
+with status badges, then optionally runs cross-file analysis:
 
 ![Cross-file analysis](docs/screenshots/04-crossfile.png)
 
-Point at a local git repository and Stratum analyzes the changeset
-structurally. The cross-file panel detects functions that moved between
-files, showing source and destination paths with similarity scores.
+The cross-file panel detects functions that moved between files, showing
+source and destination paths with similarity scores.
+
+![Per-file git diff](docs/screenshots/05-git-file-diff.png)
+
+Each file can also be diffed individually, producing the same structural
+annotations (moves, renames, semantic verdicts) as the paste-code mode.
+
+> [Watch the changeset workflow (WebM)](docs/screenshots/changeset-demo.webm)
 
 ## How it works
 

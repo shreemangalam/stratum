@@ -1,6 +1,9 @@
 package cache
 
-import "sync"
+import (
+	"log"
+	"sync"
+)
 
 // Cache is a simple thread-safe key-value store.
 type Cache struct {
@@ -13,11 +16,14 @@ func New() *Cache {
 	return &Cache{items: make(map[string]string)}
 }
 
-// Get retrieves a value by key.
+// Get retrieves a value by key, logging misses.
 func (c *Cache) Get(key string) (string, bool) {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	val, ok := c.items[key]
+	if !ok {
+		log.Printf("miss: %s", key)
+	}
 	return val, ok
 }
 
