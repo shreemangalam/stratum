@@ -34,7 +34,7 @@ func GenerateMergedSource(plan *MergePlan, base, left, right *Tree) string {
 		case MergeConflict:
 			leftText := resolveNodeText(entry.LeftNode, left)
 			rightText := resolveNodeText(entry.RightNode, right)
-			writeConflict(&b, leftText, rightText, entry.ConflictKind, &first)
+			writeConflict(&b, leftText, rightText, &first)
 		}
 	}
 
@@ -78,7 +78,7 @@ func writeEntry(b *strings.Builder, text string, first *bool) {
 	b.WriteString(text)
 }
 
-func writeConflict(b *strings.Builder, leftText, rightText string, kind *MergeConflictKind, first *bool) {
+func writeConflict(b *strings.Builder, leftText, rightText string, first *bool) {
 	if !*first {
 		b.WriteString("\n\n")
 	}
