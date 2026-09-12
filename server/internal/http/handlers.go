@@ -380,6 +380,8 @@ func (s *Server) handleCreateMerge(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	mergedSource := core.GenerateMergedSource(plan, baseTree, leftTree, rightTree)
+
 	resp := mergeResponse{
 		Language: lang,
 		Plan: mergePlanGen{
@@ -387,9 +389,10 @@ func (s *Server) handleCreateMerge(w http.ResponseWriter, r *http.Request) {
 			ConflictCount: plan.ConflictCount,
 			HasConflicts:  plan.HasConflicts,
 		},
-		BaseSource:  &req.Base.Content,
-		LeftSource:  &req.Left.Content,
-		RightSource: &req.Right.Content,
+		BaseSource:   &req.Base.Content,
+		LeftSource:   &req.Left.Content,
+		RightSource:  &req.Right.Content,
+		MergedSource: &mergedSource,
 	}
 
 	writeJSON(w, http.StatusOK, resp)

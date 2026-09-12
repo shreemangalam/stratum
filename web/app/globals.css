@@ -1322,6 +1322,82 @@ tr.merge-conflict {
 	background: var(--diff-remove-bg);
 }
 
+/* Merged source output */
+
+.merged-source {
+	margin-top: 20px;
+	border: 1px solid var(--border);
+	border-radius: 6px;
+	overflow: hidden;
+}
+
+.merged-source-header {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	padding: 8px 12px;
+	background: var(--background-offset);
+	border-bottom: 1px solid var(--border);
+}
+
+.merged-source-title {
+	font-weight: 600;
+	font-size: 0.875rem;
+}
+
+.merged-source-warning {
+	font-size: 0.75rem;
+	color: var(--diff-remove-fg);
+}
+
+.merged-source-code {
+	margin: 0;
+	padding: 0;
+	overflow-x: auto;
+	font-family: var(--font-mono);
+	font-size: 0.8125rem;
+	line-height: 1.5;
+}
+
+.merged-line {
+	display: flex;
+	padding: 0 12px;
+	min-height: 1.5em;
+}
+
+.merged-line-num {
+	flex-shrink: 0;
+	width: 3.5em;
+	padding-right: 12px;
+	text-align: right;
+	color: var(--foreground-faint);
+	user-select: none;
+}
+
+.merged-line-content {
+	flex: 1;
+	white-space: pre;
+}
+
+.conflict-marker {
+	font-weight: 700;
+}
+
+.conflict-left {
+	background: var(--diff-remove-bg);
+	color: var(--diff-remove-fg);
+}
+
+.conflict-sep {
+	background: var(--border);
+	color: var(--foreground-faint);
+}
+
+.conflict-right {
+	background: var(--diff-insert-bg);
+	color: var(--diff-insert-fg);
+}
+
 /* Cross-file analysis panel */
 
 .crossfile-panel {

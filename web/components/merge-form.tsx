@@ -276,6 +276,38 @@ function MergeResultView({ result }: { result: MergeResponse }) {
 					})}
 				</tbody>
 			</table>
+			{result.merged_source != null && (
+				<MergedSourceView source={result.merged_source} hasConflicts={plan.has_conflicts} />
+			)}
+		</div>
+	);
+}
+
+function MergedSourceView({ source, hasConflicts }: { source: string; hasConflicts: boolean }) {
+	const lines = source.split("\n");
+
+	return (
+		<div className="merged-source">
+			<div className="merged-source-header">
+				<span className="merged-source-title">Merged output</span>
+				{hasConflicts && (
+					<span className="merged-source-warning">Contains unresolved conflicts</span>
+				)}
+			</div>
+			<pre className="merged-source-code">
+				{lines.map((line, i) => {
+					let cls = "";
+					if (line.startsWith("<<<<<<< ")) cls = "conflict-marker conflict-left";
+					else if (line === "=======") cls = "conflict-marker conflict-sep";
+					else if (line.startsWith(">>>>>>> ")) cls = "conflict-marker conflict-right";
+					return (
+						<div key={i} className={`merged-line${cls ? ` ${cls}` : ""}`}>
+							<span className="merged-line-num">{i + 1}</span>
+							<span className="merged-line-content">{line}</span>
+						</div>
+					);
+				})}
+			</pre>
 		</div>
 	);
 }
