@@ -234,6 +234,27 @@ func (p *Postgres) FailJob(ctx context.Context, id, errMsg string) error {
 	return nil
 }
 
+// RequeueFailedJob atomically resets a failed job to pending so a worker
+// can claim it again. It clears the previous error and result, refreshes
+// the persisted sources, and returns the updated job. If the job is not
+// in the failed state the call is a no-op and returns nil.
+func (p *Postgres) RequeueFailedJob(ctx context.Context, id, leftSource, rightSource string) (*Job, error) {
+	job, err := scanJob(p.db.QueryRowContext(ctx, `
+		UPDATE jobs
+		SET status = 'pending', error = NULL, result = NULL,
+		    left_source = $2, right_source = $3, updated_at = now()
+		WHERE id = $1 AND status = 'failed'
+		RETURNING id, status, left_hash, right_hash, language, result, error, left_source, right_source, created_at, updated_at
+	`, id, leftSource, rightSource))
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("requeuing failed job: %w", err)
+	}
+	return job, nil
+}
+
 // Ping verifies that the database connection is available.
 func (p *Postgres) Ping(ctx context.Context) error {
 	return p.db.PingContext(ctx)

@@ -102,6 +102,19 @@ func (s *Server) handleCreateDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing != nil {
+		if existing.Status == store.StatusFailed {
+			s.sources.Put(leftHash, leftBytes)
+			s.sources.Put(rightHash, rightBytes)
+			requeued, reqErr := s.store.RequeueFailedJob(r.Context(), existing.ID, req.Left.Content, req.Right.Content)
+			if reqErr != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal error"})
+				return
+			}
+			if requeued != nil {
+				writeJSON(w, http.StatusOK, requeued)
+				return
+			}
+		}
 		writeJSON(w, http.StatusOK, existing)
 		return
 	}
@@ -484,6 +497,19 @@ func (s *Server) handleGitDiff(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if existing != nil {
+		if existing.Status == store.StatusFailed {
+			s.sources.Put(leftHash, leftBytes)
+			s.sources.Put(rightHash, rightBytes)
+			requeued, reqErr := s.store.RequeueFailedJob(r.Context(), existing.ID, leftContent, rightContent)
+			if reqErr != nil {
+				writeJSON(w, http.StatusInternalServerError, errorResponse{Error: "internal error"})
+				return
+			}
+			if requeued != nil {
+				writeJSON(w, http.StatusOK, requeued)
+				return
+			}
+		}
 		writeJSON(w, http.StatusOK, existing)
 		return
 	}

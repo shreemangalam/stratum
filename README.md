@@ -1,9 +1,13 @@
 # Stratum
 
+[![CI](https://github.com/shreemangalam/stratum/actions/workflows/ci.yml/badge.svg)](https://github.com/shreemangalam/stratum/actions/workflows/ci.yml)
+
 Structural diff, merge, and cross-file analysis tool. Parses source
 files into ASTs, matches nodes across versions, and produces edit
 scripts that name moves, renames, and semantic changes rather than
 line changes.
+
+![Stratum landing page](docs/screenshots/01-landing.png)
 
 ## What it does
 
@@ -25,6 +29,21 @@ Beyond single-file diffs, Stratum provides:
 A web UI renders diffs as side-by-side views with move arrows and
 collapsible unchanged regions, merge plans as decision tables, and
 changeset analysis with cross-file relationship badges.
+
+### Structural diff
+
+![Paste-code diff result](docs/screenshots/02-paste-diff.png)
+
+The diff view shows structural operations (body edited, field inserted,
+method added) rather than line-level changes.  Unchanged regions collapse
+automatically.
+
+### Three-way merge
+
+![Merge view](docs/screenshots/03-merge.png)
+
+The merge view shows per-node decisions: which side's changes are taken,
+which conflict, and the synthesized merged output with conflict markers.
 
 ## How it works
 
@@ -53,9 +72,32 @@ When the optimal-alignment cost estimate exceeds a configurable budget,
 Stratum leaves the remaining nodes as insertions/deletions and marks the
 region approximate instead of attempting an expensive alignment.
 
+## Architecture
+
+```
+server/           Go backend
+  cmd/api/        Entry point
+  internal/
+    core/         Algorithm (pure, no I/O)
+    parse/        Language parsers and plugin registry
+    cache/        Content-addressed cache
+    jobs/         Async job execution
+    store/        Postgres persistence
+    http/         Handlers, middleware
+  migrations/     SQL migrations
+web/              Next.js frontend
+contract/         OpenAPI spec (source of truth for wire format)
+docs/             Design documents, ADRs, and evidence
+```
+
+The `internal/core/` boundary is inviolable: the core package contains
+zero I/O, database, or HTTP imports.  This keeps the algorithm testable
+with fast unit tests and benchmarks while the HTTP and store layers handle
+infrastructure concerns.
+
 ## Setup
 
-Prerequisites: Go 1.25+, Node.js 20+, Docker.
+Prerequisites: Go 1.25+, Node.js 24+, Docker.
 
 ```bash
 make setup
@@ -64,7 +106,6 @@ make setup
 Start development:
 
 ```bash
-make dev
 cd server && go run ./cmd/api    # in one terminal
 cd web && npm run dev             # in another terminal
 ```
@@ -75,8 +116,9 @@ Run tests:
 make test
 ```
 
-See [Verification and Evidence](docs/testing.md) for the test matrix, latest
-results, representative benchmarks, and the limits of the current evidence.
+See [Verification and Evidence](docs/testing.md) for the full test matrix,
+latest results, representative benchmarks, and the limits of the current
+evidence.
 
 ## Docker deployment
 
@@ -100,34 +142,18 @@ docker build -t stratum-api ./server
 docker build -t stratum-web ./web
 ```
 
-## Project structure
+## Test coverage
 
-```
-server/           Go backend
-  cmd/api/        Entry point
-  internal/
-    core/         Algorithm (pure, no I/O)
-    parse/        Language parsers and plugin registry
-    cache/        Content-addressed cache
-    jobs/         Async job execution
-    store/        Postgres persistence
-    http/         Handlers, middleware
-  migrations/     SQL migrations
-web/              Next.js frontend
-contract/         OpenAPI spec (source of truth for wire format)
-docs/             Design documents and ADRs
-```
+| Layer | Count | What it proves |
+|---|---:|---|
+| Go unit + integration tests | 191 | Core algorithms, store persistence, HTTP handlers, merge, cross-file detection |
+| Fuzz targets | 10 | Parser and matcher invariants under malformed input |
+| Benchmarks | 15 | Performance characteristics and allocation profiles |
+| Golden corpus | 21 | Expected operations across 8 languages (C, C++, Go, Java, JS, Python, TS, XSLT) |
+| Playwright E2E | 25 | Browser smoke tests, merge form, full-stack end-to-end |
+| Static analysis | -- | golangci-lint (0 issues), TypeScript (0 errors), Biome (0 issues) |
 
-## Roadmap
-
-### v1
-
-Core structural diff with web UI. Go full AST parser, XSLT/XML
-structure-aware parser, and heuristic structural scanners for JS, TS,
-Python, Java, C, and C++. Async job execution, content-addressed
-caching, bounded computation with graceful degradation.
-
-### Language fidelity
+## Language fidelity
 
 | Language     | Parser type                  | Fidelity                                     |
 |-------------|------------------------------|----------------------------------------------|
@@ -144,7 +170,18 @@ identify top-level declarations for accurate move and rename detection
 but treat function bodies as opaque text. Unsupported languages fall
 back to line-by-line comparison with trivial-line filtering.
 
-### Known limitations
+## Shipped features
+
+- **v1**: Core structural diff with web UI, async job execution,
+  content-addressed caching, bounded computation with graceful degradation.
+- **v2**: Function-level semantic verdicts (behavior-preserving,
+  behavior-changing, indeterminate). For Go, lightweight def/use analysis
+  distinguishes independent from dependent statement reorderings.
+- **v3**: Three-way structural merge with per-node conflict classification
+  and merged source generation. Cross-file rename and move detection across
+  git changesets.
+
+## Known limitations
 
 - **Structural scanners are not full parsers.** JS/TS/Python/Java/C/C++
   scanners identify declarations by keyword patterns. Deeply nested or
@@ -157,26 +194,13 @@ back to line-by-line comparison with trivial-line filtering.
   limit on the entire JSON request body.
 - **Git mode accesses the local filesystem.** When explicitly enabled,
   the Git diff tab runs `git show` and `git diff` against local repositories.
-  Keep `GIT_ENABLED=false` on a public deployment; the API routes and frontend
-  tab are disabled in that configuration.
+  Keep `GIT_ENABLED=false` on a public deployment.
+- **Single-machine, single-worker.** The worker pool is not distributed.
+  A production deployment would need horizontal scaling and job sharding.
+- **No independently labeled ground truth.** The golden corpus tracks
+  regression but doesn't yet have expert-labeled matchings for precision/recall.
 
-### v2
-
-Function-level semantic verdicts classify changes as behavior-preserving,
-behavior-changing, or indeterminate. For Go, lightweight def/use analysis
-distinguishes independent from dependent direct statement reorderings.
-Calls, control flow, nested reordering, and blocks over 50 statements stay
-indeterminate.
-
-### v3 (current)
-
-Three-way structural merge with per-node conflict classification and
-merged source generation (git-style conflict markers for unresolved
-conflicts). Cross-file rename and move detection across git changesets,
-using content hashing for exact moves and line-set Jaccard similarity
-for edited moves and rename-moves.
-
-### Remaining
+## Remaining
 
 Labeled public benchmark with precision/recall for move detection.
 Additional language plugins driven by demand.

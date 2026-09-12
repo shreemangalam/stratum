@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os/exec"
+	"sync"
 	"testing"
 	"time"
 
@@ -411,6 +412,198 @@ func TestJobStats(t *testing.T) {
 	}
 	if stats.Completed != 1 {
 		t.Errorf("expected 1 completed, got %d", stats.Completed)
+	}
+}
+
+func TestRequeueFailedJob(t *testing.T) {
+	db := setupDB(t)
+	ctx := context.Background()
+
+	job := mustCreateJob(ctx, t, db, "rql", "rqr", "left src", "right src")
+
+	claimed, err := db.ClaimPendingJob(ctx)
+	if err != nil {
+		t.Fatalf("claiming: %v", err)
+	}
+	if err := db.FailJob(ctx, claimed.ID, "parse error"); err != nil {
+		t.Fatalf("failing: %v", err)
+	}
+
+	failed := mustGetJob(ctx, t, db, job.ID)
+	if failed.Status != store.StatusFailed {
+		t.Fatalf("expected failed, got %s", failed.Status)
+	}
+
+	requeued, err := db.RequeueFailedJob(ctx, job.ID, "new left", "new right")
+	if err != nil {
+		t.Fatalf("requeuing: %v", err)
+	}
+	if requeued == nil {
+		t.Fatal("expected requeued job, got nil")
+	}
+	if requeued.Status != store.StatusPending {
+		t.Errorf("expected pending, got %s", requeued.Status)
+	}
+	if requeued.Error != "" {
+		t.Errorf("expected empty error, got %q", requeued.Error)
+	}
+	if requeued.LeftSource != "new left" {
+		t.Errorf("expected refreshed left source")
+	}
+	if requeued.RightSource != "new right" {
+		t.Errorf("expected refreshed right source")
+	}
+}
+
+func TestRequeueFailedJob_NotFailed(t *testing.T) {
+	db := setupDB(t)
+	ctx := context.Background()
+
+	job := mustCreateJob(ctx, t, db, "nfl", "nfr", "src", "src")
+
+	requeued, err := db.RequeueFailedJob(ctx, job.ID, "src", "src")
+	if err != nil {
+		t.Fatalf("requeuing: %v", err)
+	}
+	if requeued != nil {
+		t.Error("expected nil for non-failed job")
+	}
+
+	got := mustGetJob(ctx, t, db, job.ID)
+	if got.Status != store.StatusPending {
+		t.Errorf("job should still be pending, got %s", got.Status)
+	}
+}
+
+func TestRequeueFailedJob_CompleteThenResubmit(t *testing.T) {
+	db := setupDB(t)
+	ctx := context.Background()
+
+	job := mustCreateJob(ctx, t, db, "crl", "crr", "src", "src")
+	claimed, _ := db.ClaimPendingJob(ctx)
+	script := &core.EditScript{LeftRoot: 1, RightRoot: 2}
+	if err := db.CompleteJob(ctx, claimed.ID, script); err != nil {
+		t.Fatalf("completing: %v", err)
+	}
+
+	requeued, err := db.RequeueFailedJob(ctx, job.ID, "src", "src")
+	if err != nil {
+		t.Fatalf("requeuing completed: %v", err)
+	}
+	if requeued != nil {
+		t.Error("should not requeue a completed job")
+	}
+
+	got := mustGetJob(ctx, t, db, job.ID)
+	if got.Status != store.StatusCompleted {
+		t.Errorf("completed job should stay completed, got %s", got.Status)
+	}
+}
+
+func TestRequeueFailedJob_FullCycle(t *testing.T) {
+	db := setupDB(t)
+	ctx := context.Background()
+
+	job := mustCreateJob(ctx, t, db, "fcl", "fcr", "left", "right")
+	claimed, _ := db.ClaimPendingJob(ctx)
+	_ = db.FailJob(ctx, claimed.ID, "transient error")
+
+	_, err := db.RequeueFailedJob(ctx, job.ID, "left", "right")
+	if err != nil {
+		t.Fatalf("requeuing: %v", err)
+	}
+
+	reclaimed, err := db.ClaimPendingJob(ctx)
+	if err != nil {
+		t.Fatalf("reclaiming: %v", err)
+	}
+	if reclaimed == nil {
+		t.Fatal("expected to reclaim requeued job")
+	}
+	if reclaimed.ID != job.ID {
+		t.Errorf("expected same job ID %s, got %s", job.ID, reclaimed.ID)
+	}
+
+	script := &core.EditScript{LeftRoot: 1, RightRoot: 2}
+	if err := db.CompleteJob(ctx, reclaimed.ID, script); err != nil {
+		t.Fatalf("completing: %v", err)
+	}
+
+	final := mustGetJob(ctx, t, db, job.ID)
+	if final.Status != store.StatusCompleted {
+		t.Errorf("expected completed, got %s", final.Status)
+	}
+	if final.LeftSource == "" || final.RightSource == "" {
+		t.Error("completed job should have sources")
+	}
+
+	var result core.EditScript
+	if err := json.Unmarshal(final.Result, &result); err != nil {
+		t.Fatalf("unmarshaling result: %v", err)
+	}
+}
+
+func TestFindJobByHashes_ReturnsFailedJob(t *testing.T) {
+	db := setupDB(t)
+	ctx := context.Background()
+
+	job := mustCreateJob(ctx, t, db, "fhl", "fhr", "src", "src")
+	claimed, _ := db.ClaimPendingJob(ctx)
+	_ = db.FailJob(ctx, claimed.ID, "bad input")
+
+	found, err := db.FindJobByHashes(ctx, "fhl", "fhr", "go")
+	if err != nil {
+		t.Fatalf("finding: %v", err)
+	}
+	if found == nil {
+		t.Fatal("expected to find the failed job")
+	}
+	if found.ID != job.ID {
+		t.Error("expected same job")
+	}
+	if found.Status != store.StatusFailed {
+		t.Errorf("expected failed status, got %s", found.Status)
+	}
+}
+
+func TestRequeueFailedJob_ConcurrentRetries(t *testing.T) {
+	db := setupDB(t)
+	ctx := context.Background()
+
+	job := mustCreateJob(ctx, t, db, "ccl", "ccr", "src", "src")
+	claimed, _ := db.ClaimPendingJob(ctx)
+	_ = db.FailJob(ctx, claimed.ID, "crash")
+
+	const goroutines = 5
+	results := make([]*store.Job, goroutines)
+	errs := make([]error, goroutines)
+	var wg sync.WaitGroup
+	wg.Add(goroutines)
+	for i := range goroutines {
+		go func(idx int) {
+			defer wg.Done()
+			results[idx], errs[idx] = db.RequeueFailedJob(ctx, job.ID, "src", "src")
+		}(i)
+	}
+	wg.Wait()
+
+	var successes int
+	for i := range goroutines {
+		if errs[i] != nil {
+			t.Errorf("goroutine %d error: %v", i, errs[i])
+		}
+		if results[i] != nil {
+			successes++
+		}
+	}
+
+	if successes != 1 {
+		t.Errorf("expected exactly 1 successful requeue, got %d", successes)
+	}
+
+	stats := mustJobStats(ctx, t, db)
+	if stats.Pending != 1 {
+		t.Errorf("expected 1 pending job after concurrent retries, got %d", stats.Pending)
 	}
 }
 

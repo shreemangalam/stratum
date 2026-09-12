@@ -17,19 +17,20 @@ also encoded in CI so the evidence can be regenerated from a clean checkout.
 | Static/build checks | Go vet, Go lint, TypeScript, Biome, generated-contract drift, Docker images | CI |
 | Supply-chain checks | npm advisories, secret scanning, private-file leak prevention | `cd web && npm audit` and CI |
 
-The repository currently contains 134 Go test entry points, 10 fuzz targets,
-15 Go benchmarks, 21 golden corpus cases, and 14 Playwright browser tests.
+The repository currently contains 191 Go test entry points, 10 fuzz targets,
+15 Go benchmarks, 21 golden corpus cases, and 25 Playwright browser tests.
 
 ## Latest local release verification
 
-Verified on 2026-09-11 using Windows/amd64, Go 1.25, Node 22, Docker Desktop,
+Verified on 2026-09-12 using Windows/amd64, Go 1.25, Node 24, Docker Desktop,
 Postgres 16, and installed Chrome:
 
-- `go test -count=1 ./...`: passed, including Docker-backed HTTP and store suites.
+- `go test -count=1 ./...`: 191 tests passed, including Docker-backed HTTP and store suites.
+- `golangci-lint run` (v2.13.2): 0 issues.
 - `go vet ./...`: passed.
 - `npm run typecheck`, `npm run lint`, and `npm run build`: passed.
-- Playwright smoke suite: 13 passed, one full-stack test intentionally gated.
-- Playwright against an isolated production Docker stack: 14 passed.
+- Playwright smoke suite: 24 passed, one full-stack test intentionally gated.
+- Playwright against an isolated production Docker stack: 25 passed.
 - API and frontend production Docker images: built successfully.
 - `npm audit`: zero known production or development dependency vulnerabilities.
 - Generated Go and TypeScript models: regenerated from `contract/openapi.yaml`.

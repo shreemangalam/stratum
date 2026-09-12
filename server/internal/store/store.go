@@ -54,6 +54,7 @@ type Store interface {
 	ClaimPendingJob(ctx context.Context) (*Job, error)
 	CompleteJob(ctx context.Context, id string, result *core.EditScript) error
 	FailJob(ctx context.Context, id, errMsg string) error
+	RequeueFailedJob(ctx context.Context, id, leftSource, rightSource string) (*Job, error)
 	RecoverStaleJobs(ctx context.Context, staleDuration time.Duration) (int, error)
 	DeleteOldJobs(ctx context.Context, olderThan time.Duration) (int, error)
 	JobStats(ctx context.Context) (*JobStats, error)
