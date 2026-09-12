@@ -7,7 +7,7 @@ files into ASTs, matches nodes across versions, and produces edit
 scripts that name moves, renames, and semantic changes rather than
 line changes.
 
-![Stratum landing page](docs/screenshots/01-landing.png)
+![Structural diff with move arrows and semantic verdicts](docs/screenshots/01-structural-diff.png)
 
 ## What it does
 
@@ -15,6 +15,11 @@ Line-based diffs show you *what lines changed*. Stratum shows you *what
 happened*: a function moved, a variable was renamed, a condition was
 inverted. It parses both versions of a file into syntax trees, matches
 nodes across them, and generates an edit script of structural operations.
+
+The diff view above shows `FormatOutput` moved (amber arrow), `Validate`
+renamed to `CheckInput` with a body edit, a struct field inserted, and
+semantic verdicts classifying each change as behavior-preserving or
+behavior-changing.
 
 Beyond single-file diffs, Stratum provides:
 
@@ -26,24 +31,20 @@ Beyond single-file diffs, Stratum provides:
   correlates deleted nodes in one file with inserted nodes in another to
   detect cross-file moves, renames, and rename-moves.
 
-A web UI renders diffs as side-by-side views with move arrows and
-collapsible unchanged regions, merge plans as decision tables, and
-changeset analysis with cross-file relationship badges.
-
-### Structural diff
-
-![Paste-code diff result](docs/screenshots/02-paste-diff.png)
-
-The diff view shows structural operations (body edited, field inserted,
-method added) rather than line-level changes.  Unchanged regions collapse
-automatically.
-
 ### Three-way merge
 
-![Merge view](docs/screenshots/03-merge.png)
+![Merge view](docs/screenshots/02-merge.png)
 
 The merge view shows per-node decisions: which side's changes are taken,
 which conflict, and the synthesized merged output with conflict markers.
+
+### Git changeset with cross-file detection
+
+![Cross-file analysis](docs/screenshots/04-crossfile.png)
+
+Point at a local git repository and Stratum analyzes the changeset
+structurally. The cross-file panel detects functions that moved between
+files, showing source and destination paths with similarity scores.
 
 ## How it works
 

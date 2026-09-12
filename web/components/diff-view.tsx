@@ -664,14 +664,14 @@ export function DiffView({ left, right, editScript, language, focusLines }: Diff
 									d={curve}
 									fill="none"
 									stroke="var(--diff-move)"
-									strokeWidth={1}
+									strokeWidth={2}
 									className="diff-arrow-path"
 								/>
-								<circle cx={0} cy={y1} r={3} fill="var(--diff-move)" className="diff-arrow-dot" />
+								<circle cx={0} cy={y1} r={4} fill="var(--diff-move)" className="diff-arrow-dot" />
 								<circle
 									cx={ARROW_GAP}
 									cy={y2}
-									r={3}
+									r={4}
 									fill="var(--diff-move)"
 									className="diff-arrow-dot"
 								/>
