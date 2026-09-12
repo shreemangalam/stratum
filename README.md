@@ -14,9 +14,10 @@ nodes across them, and generates an edit script of structural operations.
 
 Beyond single-file diffs, Stratum provides:
 
-- **Three-way merge planning** -- given a common ancestor and two
+- **Three-way merge** -- given a common ancestor and two
   branches, produces a per-node merge plan with structural conflict
-  classification (modify-modify, delete-modify, rename-rename, add-add).
+  classification (modify-modify, delete-modify, rename-rename, add-add)
+  and synthesized merged output with git-style conflict markers.
 - **Cross-file move detection** -- when analyzing a git changeset,
   correlates deleted nodes in one file with inserted nodes in another to
   detect cross-file moves, renames, and rename-moves.
@@ -38,7 +39,9 @@ changeset analysis with cross-file relationship badges.
 3. **Generate** an edit script classifying each change as an insert,
    delete, move, rename, update, or alignment change.
 4. **Merge** (three-way): match base-to-left and base-to-right, then
-   iterate structural units to produce per-node merge decisions.
+   iterate structural units to produce per-node merge decisions and
+   synthesize the merged file content (auto-resolved text or conflict
+   markers).
 5. **Cross-file analysis**: collect deleted and inserted nodes across
    all files in a changeset, match by content hash (exact moves),
    label+similarity (edited moves), and kind+similarity (rename-moves).
@@ -167,10 +170,11 @@ indeterminate.
 
 ### v3 (current)
 
-Three-way structural merge planning with per-node conflict classification.
-Cross-file rename and move detection across git changesets, using content
-hashing for exact moves and line-set Jaccard similarity for edited moves
-and rename-moves.
+Three-way structural merge with per-node conflict classification and
+merged source generation (git-style conflict markers for unresolved
+conflicts). Cross-file rename and move detection across git changesets,
+using content hashing for exact moves and line-set Jaccard similarity
+for edited moves and rename-moves.
 
 ### Remaining
 
