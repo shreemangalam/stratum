@@ -3,7 +3,7 @@ import Link from "next/link";
 
 export const metadata: Metadata = {
 	title: "Stratum - Help",
-	description: "How to use Stratum's structural diff",
+	description: "How to use Stratum's structural diff, three-way merge, and cross-file analysis",
 };
 
 const operations = [
@@ -133,15 +133,21 @@ export default function HelpPage() {
 
 			<h1 className="help-title">How Stratum works</h1>
 			<p className="help-intro">
-				Stratum is a structural diff tool. Instead of comparing files line by line, it parses source
-				code into a syntax tree and matches nodes across versions. The result is an edit script that
-				names moves, renames, and semantic changes - not just &ldquo;line 42 changed.&rdquo;
+				Stratum is a structural source-code analysis tool. It parses code into syntax trees and
+				compares nodes across versions instead of lines. The result is an edit script that names
+				moves, renames, and semantic changes — not just &ldquo;line 42 changed.&rdquo;
 			</p>
 			<p className="help-text">
 				A function that was relocated from line 10 to line 80 shows up as a single
 				<strong> move</strong> operation, not as 8 deleted lines and 8 inserted lines. A renamed
 				variable is one <strong>rename</strong>, not a dozen scattered changes. This makes code
 				review faster and refactorings easier to verify.
+			</p>
+			<p className="help-text">
+				Beyond two-way diff, Stratum provides <strong>three-way structural merge</strong> with
+				per-node conflict classification and merged source generation, and{" "}
+				<strong>cross-file move detection</strong> that correlates deleted nodes in one file with
+				inserted nodes in another across an entire changeset.
 			</p>
 
 			<section className="help-section">
@@ -180,6 +186,25 @@ export default function HelpPage() {
 					</li>
 					<li>
 						Select a file and click <strong>Diff selected file</strong>.
+					</li>
+				</ol>
+				<p className="help-text" style={{ marginTop: 12 }}>
+					<strong>Three-way merge</strong> (third tab)
+				</p>
+				<ol className="help-steps">
+					<li>
+						Paste or upload the <strong>base</strong> (common ancestor), <strong>left</strong>, and{" "}
+						<strong>right</strong> versions of a file.
+					</li>
+					<li>
+						Select a language or leave on <strong>Auto-detect</strong>.
+					</li>
+					<li>
+						Click <strong>Merge</strong> or press <strong>Ctrl+Enter</strong>.
+					</li>
+					<li>
+						The result shows a per-node merge plan table and the synthesized merged output with
+						conflict markers.
 					</li>
 				</ol>
 			</section>
@@ -258,6 +283,87 @@ export default function HelpPage() {
 					<code>HEAD~1</code>, <code>HEAD~5</code>), commit hashes, or tags. The language is
 					detected automatically from the file extension. Files with unrecognized extensions fall
 					back to line-level comparison.
+				</p>
+			</section>
+
+			<section className="help-section">
+				<h2 className="help-heading">Three-way merge</h2>
+				<p className="help-text">
+					The <strong>Merge</strong> tab performs a structural three-way merge. Given a common
+					ancestor (base) and two diverged versions (left and right), Stratum parses all three into
+					syntax trees, matches corresponding nodes, and produces a per-node merge plan.
+				</p>
+				<p className="help-text">
+					Each structural unit (function, class, type, import) receives a decision:
+				</p>
+				<dl className="help-verdicts">
+					<div className="help-verdict-row">
+						<dt className="help-verdict-term">Unchanged</dt>
+						<dd className="help-verdict-desc">
+							Identical in base, left, and right. Passes through to the merged output.
+						</dd>
+					</div>
+					<div className="help-verdict-row">
+						<dt className="help-verdict-term">Take left / Take right</dt>
+						<dd className="help-verdict-desc">
+							Only one side changed. The changed version is chosen automatically.
+						</dd>
+					</div>
+					<div className="help-verdict-row">
+						<dt className="help-verdict-term">Take either</dt>
+						<dd className="help-verdict-desc">
+							Both sides changed identically relative to base. Either version works.
+						</dd>
+					</div>
+					<div className="help-verdict-row">
+						<dt className="help-verdict-term">Delete</dt>
+						<dd className="help-verdict-desc">
+							Both sides deleted the node. It is omitted from the merged output.
+						</dd>
+					</div>
+					<div className="help-verdict-row">
+						<dt className="help-verdict-term">Conflict</dt>
+						<dd className="help-verdict-desc">
+							Both sides changed differently (modify-modify), or one deleted while the other
+							modified (delete-modify). Cannot be auto-resolved.
+						</dd>
+					</div>
+				</dl>
+				<p className="help-text" style={{ marginTop: 12 }}>
+					<strong>Merged output.</strong> Below the plan table, Stratum synthesizes the merged file
+					content. Auto-resolved entries emit the chosen side&apos;s source text. Conflicts emit
+					git-style markers (<code>{"<<<<<<< left"}</code> / <code>{"======="}</code> /{" "}
+					<code>{">>>>>>> right"}</code>) so the output can be saved directly and resolved in any
+					editor. Line numbers and color-coded conflict highlighting make conflicts easy to spot.
+				</p>
+			</section>
+
+			<section className="help-section">
+				<h2 className="help-heading">Cross-file analysis</h2>
+				<p className="help-text">
+					In the <strong>Git diff</strong> tab, the <strong>Analyze changeset</strong> button diffs
+					all changed files between two refs and detects cross-file relationships. When a function
+					is deleted from one file and an identical or similar function appears in another, Stratum
+					reports it as a cross-file move rather than an unrelated delete and insert.
+				</p>
+				<p className="help-text">Detection runs in three phases:</p>
+				<ol className="help-steps">
+					<li>
+						<strong>Exact match</strong> — nodes with identical source text (by SHA-256 hash) in
+						different files are definite moves (score 1.0).
+					</li>
+					<li>
+						<strong>Similarity match</strong> — unmatched nodes with the same name and kind are
+						compared using line-set Jaccard similarity. Pairs above 0.6 are moves with edits.
+					</li>
+					<li>
+						<strong>Rename-move</strong> — remaining unmatched nodes of the same kind in different
+						files are compared. Pairs above 0.75 similarity are flagged as rename-moves.
+					</li>
+				</ol>
+				<p className="help-text">
+					Cross-file matches appear as badges on the file list and in a dedicated panel below,
+					showing the source file, target file, node names, and similarity score.
 				</p>
 			</section>
 
@@ -378,7 +484,9 @@ export default function HelpPage() {
 				<dl className="help-verdicts">
 					<div className="help-verdict-row">
 						<dt className="help-verdict-term">Ctrl+Enter</dt>
-						<dd className="help-verdict-desc">Submit the diff (paste mode).</dd>
+						<dd className="help-verdict-desc">
+							Submit the current form (diff in paste mode, merge in merge mode).
+						</dd>
 					</div>
 				</dl>
 			</section>
@@ -421,53 +529,43 @@ export default function HelpPage() {
 			</section>
 
 			<section className="help-section">
-				<h2 className="help-heading">Roadmap</h2>
-				<p className="help-text" style={{ marginBottom: 12 }}>
-					<strong>v2</strong> - Semantic evidence and evaluation
-				</p>
+				<h2 className="help-heading">Shipped features</h2>
 				<dl className="help-verdicts">
 					<div className="help-verdict-row">
-						<dt className="help-verdict-term">Dataflow analysis</dt>
+						<dt className="help-verdict-term">Structural diff</dt>
 						<dd className="help-verdict-desc">
-							Implemented for direct Go statement reorderings. Independent def/use sets are
-							classified as preserving, dependencies as changing, and uncertain side effects as
-							indeterminate.
+							Two-way structural diff with move, rename, and update detection across 7 languages.
+							Paste code or diff files from a local git repository. Shareable permalink for every
+							result.
 						</dd>
 					</div>
 					<div className="help-verdict-row">
-						<dt className="help-verdict-term">Public benchmark</dt>
+						<dt className="help-verdict-term">Semantic classification</dt>
 						<dd className="help-verdict-desc">
-							Remaining: a labeled corpus from real open-source history with published
-							move-detection precision, recall, methodology, and reproducible results.
+							Each matched function is classified as behavior-preserving, behavior-changing, or
+							indeterminate. Go statement reorderings receive bounded def/use dataflow analysis.
 						</dd>
 					</div>
-				</dl>
-				<p className="help-text" style={{ marginTop: 16, marginBottom: 12 }}>
-					<strong>v3 (current)</strong> - Structural merge and cross-file analysis
-				</p>
-				<dl className="help-verdicts">
 					<div className="help-verdict-row">
 						<dt className="help-verdict-term">Three-way merge</dt>
 						<dd className="help-verdict-desc">
-							Implemented. The Merge tab accepts a base, left, and right source and produces a
-							per-node merge plan with structural conflict classification: modify-modify,
-							delete-modify, rename-rename, and add-add. Each structural unit shows a verdict and
-							the chosen resolution.
+							Structural three-way merge with per-node conflict classification (modify-modify,
+							delete-modify, rename-rename, add-add) and synthesized merged output with git-style
+							conflict markers.
 						</dd>
 					</div>
 					<div className="help-verdict-row">
 						<dt className="help-verdict-term">Cross-file detection</dt>
 						<dd className="help-verdict-desc">
-							Implemented. In the Git diff tab, &quot;Analyze changeset&quot; diffs all changed
-							files between two refs and detects cross-file moves and rename-moves. Uses content
-							hashing for exact moves and line-set Jaccard similarity for edited moves (threshold
-							0.6) and rename-moves (threshold 0.75).
+							Changeset analysis diffs all changed files between two git refs and detects cross-file
+							moves and rename-moves using content hashing and Jaccard similarity.
 						</dd>
 					</div>
 				</dl>
-				<p className="help-text" style={{ marginTop: 16, marginBottom: 12 }}>
-					<strong>Remaining</strong>
-				</p>
+			</section>
+
+			<section className="help-section">
+				<h2 className="help-heading">Roadmap</h2>
 				<dl className="help-verdicts">
 					<div className="help-verdict-row">
 						<dt className="help-verdict-term">Public benchmark</dt>
